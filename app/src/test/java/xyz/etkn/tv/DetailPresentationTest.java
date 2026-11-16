@@ -6,6 +6,25 @@ import java.util.*;
 import static org.junit.Assert.*;
 
 public class DetailPresentationTest {
+    @Test public void automaticSubtitlePromptUsesServerDefaultThenTranslationPlan()throws Exception{
+        JSONObject source=new JSONObject().put("DefaultSubtitleStreamIndex",-1).put("SubtitleTranslation",new JSONObject().put("Mode","translate").put("Target","chs"));
+        assertEquals("实时翻译（简中）",DetailPresentation.subtitleLabel(source,PlaybackSelection.AUTO));
+        assertEquals("关闭",DetailPresentation.subtitleLabel(source,-1));
+        source.put("MediaStreams",new JSONArray().put(new JSONObject().put("Type","Subtitle").put("Index",7).put("Title","中文字幕"))).put("DefaultSubtitleStreamIndex",7);
+        assertEquals("中文字幕",DetailPresentation.subtitleLabel(source,PlaybackSelection.AUTO));
+        source.put("DefaultSubtitleStreamIndex",-1).getJSONObject("SubtitleTranslation").put("Mode","convert").put("Target","cht");
+        assertEquals("繁简转换（繁中）",DetailPresentation.subtitleLabel(source,PlaybackSelection.AUTO));
+        assertEquals("无字幕",DetailPresentation.subtitleLabel(new JSONObject(),PlaybackSelection.AUTO));
+    }
+
+    @Test public void detailVideoInfoFollowsSelectedSourceAndOmitsMissingFields()throws Exception{
+        assertEquals("",DetailPresentation.videoInfo(null));assertEquals("",DetailPresentation.videoInfo(new JSONObject()));
+        JSONObject source=new JSONObject().put("Container","mkv").put("Size",2147483648L).put("Bitrate",12500000)
+            .put("MediaStreams",new JSONArray().put(new JSONObject().put("Type","Audio").put("Codec","aac")).put(new JSONObject().put("Type","Video").put("Width",3840).put("Height",2160).put("Codec","hevc").put("VideoRange","HDR10")));
+        assertEquals("MKV · 3840×2160 HEVC HDR10 · 2.00 GB · 12.5 Mbps",DetailPresentation.videoInfo(source));
+        assertEquals("MP4",DetailPresentation.videoInfo(new JSONObject().put("Container","mp4")));
+    }
+
     @Test public void versionPreviewDropsOnlyExactTechnicalSuffixAndChoicesKeepIt()throws Exception{
         JSONObject source=new JSONObject().put("Name","原盘 · 收藏版 · 4K HEVC HDR10")
             .put("MediaStreams",new JSONArray().put(new JSONObject().put("Type","Video").put("DisplayTitle","4K HEVC HDR10")));

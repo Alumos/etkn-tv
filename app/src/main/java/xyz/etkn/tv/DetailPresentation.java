@@ -5,6 +5,25 @@ import org.json.JSONObject;
 import java.util.*;
 
 final class DetailPresentation {
+    static String subtitleLabel(JSONObject source,int index){
+        if(index==PlaybackSelection.AUTO){
+            JSONObject stream=PlaybackSelection.stream(source,PlaybackSelection.defaultIndex(source,true),true);
+            if(stream!=null)return PlaybackSelection.streamLabel(stream);
+            JSONObject plan=source==null?null:source.optJSONObject("SubtitleTranslation");
+            if(plan!=null)return ("convert".equals(plan.optString("Mode"))?"繁简转换":"实时翻译")+"（"+("cht".equals(plan.optString("Target"))?"繁中":"简中")+"）";
+            return PlaybackSelection.streams(source,true).isEmpty()?"无字幕":"关闭";
+        }
+        return PlaybackSelection.selectionLabel(source,index,true);
+    }
+    static String videoInfo(JSONObject source){
+        if(source==null)return "";List<String> parts=new ArrayList<>();String container=source.optString("Container");if(!container.isEmpty())parts.add(container.toUpperCase(Locale.ROOT));
+        JSONArray streams=source.optJSONArray("MediaStreams");if(streams!=null)for(int i=0;i<streams.length();i++){JSONObject stream=streams.optJSONObject(i);if(stream==null||!"Video".equalsIgnoreCase(stream.optString("Type")))continue;
+            List<String> video=new ArrayList<>();if(stream.optInt("Width")>0&&stream.optInt("Height")>0)video.add(stream.optInt("Width")+"×"+stream.optInt("Height"));
+            for(String key:new String[]{"Codec","VideoRange"}){String value=stream.optString(key);if(!value.isEmpty())video.add(value.toUpperCase(Locale.ROOT));}if(!video.isEmpty())parts.add(String.join(" ",video));break;
+        }
+        if(source.optLong("Size")>0)parts.add(String.format(Locale.ROOT,"%.2f GB",source.optLong("Size")/1073741824d));
+        if(source.optLong("Bitrate")>0)parts.add(String.format(Locale.ROOT,"%.1f Mbps",source.optLong("Bitrate")/1000000d));return String.join(" · ",parts);
+    }
     static String contentRating(JSONObject item){String custom=item.isNull("CustomRating")?"":item.optString("CustomRating").trim();return custom.isEmpty()?(item.isNull("OfficialRating")?"":item.optString("OfficialRating").trim()):custom;}
     static String rating(JSONObject item,String field){double value=item.optDouble(field,Double.NaN);return Double.isNaN(value)?"–":String.format(Locale.ROOT,"%.1f",value);}
     static String tomatoRating(JSONObject item){
