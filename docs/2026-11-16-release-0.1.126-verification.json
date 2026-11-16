@@ -1,0 +1,137 @@
+{
+  "date": "2026-11-16",
+  "local": {
+    "version": "0.1.126",
+    "versionCode": 127,
+    "sourceCommit": "a4394e3ac1fd96a712da7de9adb538d6f9ffa237",
+    "implementationCommit": "9c886b1",
+    "assets": {
+      "etkn-tv-0.1.126.apk": {
+        "size": 70021497,
+        "sha256": "0f59c07dee49ec3c2d6be0c1a64795a93944f34b8e3c60f71178776693a77a1b"
+      },
+      "RELEASE_NOTES.md": {
+        "size": 129,
+        "sha256": "f6877089def72efcddbb641b590a49d17f94afac889c3766412a9b6a430a1bf6"
+      },
+      "SHA256SUMS.txt": {
+        "size": 247,
+        "sha256": "b604b6ced69ff9739439306ca4bab1377fe739aba1a8338102d6b8d5f2dae9b5"
+      },
+      "update.json": {
+        "size": 433,
+        "sha256": "5e0cade332cecd0d6e577cb71f4d4b7d99ee437a86a416b3f82d55587a39d464"
+      }
+    },
+    "unitTests": {
+      "suites": 27,
+      "tests": 126,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "lint": {
+      "errors": 0,
+      "warnings": 109
+    },
+    "nativeLibrariesComparedWith": "v0.1.125",
+    "nativeLibrariesUnchanged": 20,
+    "licenseFilesUnchanged": 25,
+    "buildAndTestsRerunThisTurn": false
+  },
+  "signatureCertificateSha256": "e02d42443875c3631be48199e0df419b0570fcc421be7ff2b620f4c643e67bd7",
+  "apkMetadata": {
+    "packageName": "xyz.etkn.tv",
+    "versionName": "0.1.126",
+    "versionCode": 127,
+    "minSdk": 24,
+    "targetSdk": 35
+  },
+  "privateETKvNextRepositoryPushed": false,
+  "draftVerification": {
+    "releaseId": 447044646,
+    "sourceCommit": "a4394e3ac1fd96a712da7de9adb538d6f9ffa237",
+    "assets": {
+      "etkn-tv-0.1.126.apk": {
+        "size": 70021497,
+        "sha256": "0f59c07dee49ec3c2d6be0c1a64795a93944f34b8e3c60f71178776693a77a1b"
+      },
+      "RELEASE_NOTES.md": {
+        "size": 129,
+        "sha256": "f6877089def72efcddbb641b590a49d17f94afac889c3766412a9b6a430a1bf6"
+      },
+      "SHA256SUMS.txt": {
+        "size": 247,
+        "sha256": "b604b6ced69ff9739439306ca4bab1377fe739aba1a8338102d6b8d5f2dae9b5"
+      },
+      "update.json": {
+        "size": 433,
+        "sha256": "5e0cade332cecd0d6e577cb71f4d4b7d99ee437a86a416b3f82d55587a39d464"
+      }
+    },
+    "body": "- 新增字幕大小设置，支持即时调整并记住选择\n- 详情页简介全宽显示，最多三行，支持展开全文\n",
+    "assetHashesMatch": true,
+    "bodyMatches": true,
+    "latestBeforePublication": "v0.1.125"
+  },
+  "release": {
+    "releaseId": 447044646,
+    "url": "https://github.com/hbq0405/etkn-tv/releases/tag/v0.1.126",
+    "tag": "v0.1.126",
+    "draft": false,
+    "prerelease": false,
+    "publishedAt": "2026-11-16T13:01:00Z",
+    "sourceCommit": "a4394e3ac1fd96a712da7de9adb538d6f9ffa237",
+    "tagObject": "255c66cbbb6d4fb77a3167c2fe1c10a7ccc15c7b",
+    "assets": {
+      "etkn-tv-0.1.126.apk": {
+        "size": 70021497,
+        "sha256": "0f59c07dee49ec3c2d6be0c1a64795a93944f34b8e3c60f71178776693a77a1b"
+      },
+      "RELEASE_NOTES.md": {
+        "size": 129,
+        "sha256": "f6877089def72efcddbb641b590a49d17f94afac889c3766412a9b6a430a1bf6"
+      },
+      "SHA256SUMS.txt": {
+        "size": 247,
+        "sha256": "b604b6ced69ff9739439306ca4bab1377fe739aba1a8338102d6b8d5f2dae9b5"
+      },
+      "update.json": {
+        "size": 433,
+        "sha256": "5e0cade332cecd0d6e577cb71f4d4b7d99ee437a86a416b3f82d55587a39d464"
+      }
+    },
+    "body": "- 新增字幕大小设置，支持即时调整并记住选择\n- 详情页简介全宽显示，最多三行，支持展开全文\n",
+    "anonymousAssetsVerified": 4,
+    "latestManifestByteIdentical": true,
+    "isLatest": true
+  },
+  "telegram": {
+    "runId": 43871798944,
+    "url": "https://github.com/hbq0405/etkn-tv/actions/runs/43871798944",
+    "headSha": "a4394e3ac1fd96a712da7de9adb538d6f9ffa237",
+    "conclusion": "success",
+    "runAttempt": 1,
+    "messageId": 65292,
+    "deliveryReceiptCount": 1,
+    "rerun": false
+  },
+  "remoteRefsAtPublication": {
+    "refs/heads/main": "a4394e3ac1fd96a712da7de9adb538d6f9ffa237",
+    "refs/tags/v0.1.126": "255c66cbbb6d4fb77a3167c2fe1c10a7ccc15c7b",
+    "refs/tags/v0.1.126^{}": "a4394e3ac1fd96a712da7de9adb538d6f9ffa237"
+  },
+  "deviceValidation": {
+    "installedAgainThisTurn": false,
+    "currentTurnPhysicalPlaybackValidated": false,
+    "apkMatchesPriorInstalledHash": true,
+    "priorTurnReport": "docs/2026-11-16-subtitle-size-three-line-overview.md",
+    "priorTurnReportedInstrumentation": {
+      "tests": 5,
+      "result": "passed"
+    },
+    "priorTurnInstalledVersion": "0.1.126 / code127"
+  },
+  "taskScope": "仅ETKN-TV；ETKvNext未修改、未推送、未重新部署",
+  "temporaryArtifactsCleaned": true
+}
