@@ -1,0 +1,104 @@
+{
+  "date": "2026-11-16",
+  "local": {
+    "version": "0.1.125",
+    "versionCode": 126,
+    "sourceCommit": "2b2c84834568765acc5bce054d48a86619368557",
+    "assets": {
+      "etkn-tv-0.1.125.apk": {
+        "size": 70021393,
+        "sha256": "b1f0a025fb8f333b530316d923f23b9d8939dccb425fc00d3a83b2714c8570fc"
+      },
+      "update.json": {
+        "size": 403,
+        "sha256": "93b4a3fbbcb2c923c187f13b14d560e5808a55a0da5c89516ebecbabdd961120"
+      },
+      "SHA256SUMS.txt": {
+        "size": 247,
+        "sha256": "353f4f685cf638b796af6026909973f41a2782c2d819e09f070d7d36ed61d07b"
+      },
+      "RELEASE_NOTES.md": {
+        "size": 90,
+        "sha256": "c615f8958c6ff18ae1b5f0f2e9d5f5fab6380e9950240f2e4c38a1081d1cd612"
+      }
+    },
+    "unitTests": {
+      "tests": 126,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "lint": {
+      "errors": 0,
+      "warnings": 109
+    },
+    "nativeLibrariesComparedWith": "v0.1.116",
+    "nativeLibrariesUnchanged": 20,
+    "existingLicensesUnchanged": 24,
+    "addedLicenseFiles": [
+      "assets/licenses/SourceHanSans-OFL-1.1.txt"
+    ],
+    "previousPublishedApkSha256": "3149ee94ff899e69dfd0a02e58f67093b20f1450474a9969a0ae5cd063728d61"
+  },
+  "release": {
+    "releaseId": 446711002,
+    "url": "https://github.com/hbq0405/etkn-tv/releases/tag/v0.1.125",
+    "tag": "v0.1.125",
+    "draft": false,
+    "publishedAt": "2026-11-16T07:15:54Z",
+    "sourceCommit": "2b2c84834568765acc5bce054d48a86619368557",
+    "tagObject": "a616409cad9715271fa2c3bc29b69f904d177085",
+    "assets": {
+      "etkn-tv-0.1.125.apk": {
+        "size": 70021393,
+        "sha256": "b1f0a025fb8f333b530316d923f23b9d8939dccb425fc00d3a83b2714c8570fc"
+      },
+      "update.json": {
+        "size": 403,
+        "sha256": "93b4a3fbbcb2c923c187f13b14d560e5808a55a0da5c89516ebecbabdd961120"
+      },
+      "SHA256SUMS.txt": {
+        "size": 247,
+        "sha256": "353f4f685cf638b796af6026909973f41a2782c2d819e09f070d7d36ed61d07b"
+      },
+      "RELEASE_NOTES.md": {
+        "size": 90,
+        "sha256": "c615f8958c6ff18ae1b5f0f2e9d5f5fab6380e9950240f2e4c38a1081d1cd612"
+      }
+    },
+    "body": "- 优化媒体详情页\n- 优化分集加载、分集列表\n- 音乐库支持歌词显示\n",
+    "anonymousAssetsVerified": 4,
+    "latestManifestByteIdentical": true,
+    "isLatest": true
+  },
+  "telegram": {
+    "runId": 43822577367,
+    "url": "https://github.com/hbq0405/etkn-tv/actions/runs/43822577367",
+    "headSha": "2b2c84834568765acc5bce054d48a86619368557",
+    "conclusion": "success",
+    "runAttempt": 1,
+    "messageId": 65235,
+    "deliveryReceiptCount": 1,
+    "rerun": false
+  },
+  "signatureCertificateSha256": "e02d42443875c3631be48199e0df419b0570fcc421be7ff2b620f4c643e67bd7",
+  "apkMetadata": {
+    "packageName": "xyz.etkn.tv",
+    "versionName": "0.1.125",
+    "versionCode": 126,
+    "minSdk": 24,
+    "targetSdk": 35
+  },
+  "deviceValidation": {
+    "currentAdbDevices": 0,
+    "installedAgainThisTurn": false,
+    "apkMatchesPriorInstalledHash": true,
+    "priorTurnReportedInstrumentation": {
+      "tests": 6,
+      "result": "passed",
+      "timeSeconds": 55.946
+    },
+    "currentTurnPhysicalPlaybackValidated": false
+  },
+  "privateETKvNextRepositoryPushed": false
+}
