@@ -923,6 +923,40 @@ public class DetailFlowTest {
             await(()->"2".equals(selected(C.TRACK_TYPE_AUDIO)));assertEquals(24,field(playback,"audioIndex"));await(()->server.stopped.size()==1);assertEquals("episode-2-3",server.stopped.get(0).optString("ItemId"));
         }finally{cleanup();}
     }
+    @Test public void episodeListFitsThreeFullRowsEvenAtLargestSize()throws Exception{
+        try(Fixture server=new Fixture()){
+            server.matrixEpisodeCount=420;server.longEpisodeOverview=true;open(server,"episode-1-219");play();
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);await(()->panelCard(219)!=null);settle();
+            View panel=(View)field(playback,"episodePanel"),current=panelCard(219);LinearLayout cards=(LinearLayout)field(panel,"cards");int lastHeight=0,lastWidth=0;
+            for(int size=0;size<TvPreferences.IMAGE_SIZE_LABELS.length;size++){
+                int level=size;onMain(()->{new TvPreferences(playback,playback.api).setImageSize(level);playback.applyImageSizeNow();});settle();
+                assertSame("换挡不能重建或丢失当前焦点",current,playback.getCurrentFocus());assertEquals("换挡不能重复读取分集",40,cards.getChildCount());
+                assertTrue("五档行高应递增",current.getHeight()>lastHeight);assertTrue("五档面板宽度应递增",panel.getWidth()>lastWidth);lastHeight=current.getHeight();lastWidth=panel.getWidth();
+                onMain(()->{
+                    assertThreeFullEpisodeRows(panel);assertFullyVisible(current);
+                    LinearLayout row=(LinearLayout)current;View art=row.getChildAt(0);assertEquals("紧凑横向图文列表",LinearLayout.HORIZONTAL,row.getOrientation());assertEquals(art.getWidth()*9/16,art.getHeight());
+                    LinearLayout info=(LinearLayout)row.getChildAt(1);TextView overview=(TextView)info.getChildAt(info.getChildCount()-1);assertEquals("用完整三行简介验证密度",3,overview.getLineCount());assertFullyVisible(overview);
+                    assertTrue("简介三行不能被行高截断",overview.getHeight()>=overview.getLayout().getHeight()+overview.getPaddingTop()+overview.getPaddingBottom());
+                });
+                screenshot("player-episode-list-size-"+size+".png");
+            }
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN);settle();assertSame(panelCard(220),playback.getCurrentFocus());
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);settle();assertSame(current,playback.getCurrentFocus());
+            closePlayer();server.placeholderDates=true;resumeEpisode(server,"episode-2-3");
+            onMain(()->{new TvPreferences(playback,playback.api).setImageSize(TvPreferences.IMAGE_EXTREMELY_LARGE);playback.applyImageSizeNow();});
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);await(()->panelCard(3)!=null);settle();
+            onMain(()->{
+                assertThreeFullEpisodeRows((View)field(playback,"episodePanel"));View dated=panelCard(4);assertFullyVisible(dated);
+                LinearLayout info=(LinearLayout)((LinearLayout)dated).getChildAt(1);TextView overview=(TextView)info.getChildAt(info.getChildCount()-1);
+                assertEquals(3,overview.getLineCount());assertTrue("带日期的三行简介也不能截断：实高="+overview.getHeight()+"，文本="+overview.getLayout().getHeight()+"，行高="+dated.getHeight(),overview.getHeight()>=overview.getLayout().getHeight()+overview.getPaddingTop()+overview.getPaddingBottom());
+            });screenshot("player-episode-list-largest-multiple-seasons.png");
+        }finally{cleanup();}
+    }
+    private void assertThreeFullEpisodeRows(View panel){
+        LinearLayout cards=(LinearLayout)field(panel,"cards");Rect frame=new Rect();assertTrue(((View)field(panel,"viewportFrame")).getGlobalVisibleRect(frame));int full=0;
+        for(int i=0;i<cards.getChildCount();i++){View card=cards.getChildAt(i);Rect visible=new Rect();if(card.getGlobalVisibleRect(visible)&&visible.width()==card.getWidth()&&visible.height()==card.getHeight()&&frame.contains(visible))full++;}
+        assertTrue("极大挡位也必须完整显示至少3个分集，实际 "+full,full>=3);
+    }
     @Test public void episodeCardsLoadFortyAtATimeAndReturnThroughSlowPreviousPages()throws Exception{
         try(Fixture server=new Fixture()){
             server.matrixEpisodeCount=420;server.matrixResumeEpisode=219;open(server,"episode-1-219");play();server.requests.clear();server.imagePaths.clear();
@@ -1640,7 +1674,7 @@ public class DetailFlowTest {
         final java.util.concurrent.CountDownLatch playbackRequested=new java.util.concurrent.CountDownLatch(1),playbackGate=new java.util.concurrent.CountDownLatch(1);
         volatile int refreshStatusRequests;
         volatile int matrixEpisodeCount=24,matrixResumeEpisode=3;
-        volatile boolean failEpisodePage;
+        volatile boolean failEpisodePage,longEpisodeOverview;
         volatile String nextSeriesId="series-one";
         volatile java.util.concurrent.CountDownLatch episodePageRequested,episodePageGate;
         volatile String taskStatus="running";
@@ -1737,7 +1771,7 @@ public class DetailFlowTest {
                 JSONArray page=new JSONArray();for(int i=start;i<Math.min(start+limit,episodes.size());i++)page.put(episodes.get(i));
                 return new JSONObject().put("Items",page).put("StartIndex",start).put("NextStartIndex",start+page.length()).put("TotalRecordCount",episodes.size());
             }
-            if(path.contains("/Episodes")){JSONArray episodes=new JSONArray();int seasons=path.contains("series-many")?2:1;for(int s=1;s<=seasons;s++)for(int e=1;e<=(s==1?matrixEpisodeCount:12);e++)episodes.put(new JSONObject().put("Id","episode-"+s+"-"+e).put("Type","Episode").put("Name","故事 "+e).put("SeriesName","合成剧集").put("SeriesId",seasons==2?"series-many":"series-one").put("SeasonId","season-"+s).put("ParentIndexNumber",s).put("IndexNumber",e).put("RunTimeTicks",100000000).put("Overview","第 "+e+" 集的合成简介").put("ParentBackdropItemId","series-parent").put("MediaSources",sources(false)).put("UserData",new JSONObject().put("PlaybackPositionTicks",playbackTicks("episode-"+s+"-"+e,!noProgress&&s==seasons&&e==matrixResumeEpisode?30000000:0)).put("Played",e==1||(matrixResumeEpisode>3&&e<matrixResumeEpisode))));if(placeholderDates)for(int i=0;i<episodes.length();i++){JSONObject ep=episodes.getJSONObject(i);int n=ep.optInt("IndexNumber");if(n>=4&&n<=7){ep.put("IsMissing",true).put("LocationType","Virtual");if(n<=6)ep.put("PremiereDate",placeholderDate(n-4)+"T00:00:00Z");}}if(!path.contains("Fields=MediaSources,MediaStreams,Overview"))for(int i=0;i<episodes.length();i++)episodes.getJSONObject(i).remove("MediaSources");return new JSONObject().put("Items",episodes);}
+            if(path.contains("/Episodes")){JSONArray episodes=new JSONArray();int seasons=path.contains("series-many")?2:1;for(int s=1;s<=seasons;s++)for(int e=1;e<=(s==1?matrixEpisodeCount:12);e++)episodes.put(new JSONObject().put("Id","episode-"+s+"-"+e).put("Type","Episode").put("Name","故事 "+e).put("SeriesName","合成剧集").put("SeriesId",seasons==2?"series-many":"series-one").put("SeasonId","season-"+s).put("ParentIndexNumber",s).put("IndexNumber",e).put("RunTimeTicks",100000000).put("Overview",longEpisodeOverview?"这是用于分集列表密度验收的合成剧情简介。主人公在新的旅途中遇到了伙伴，也发现了隐藏已久的秘密。他们一起作出选择，继续探索未知世界。这里继续补充较长的剧情文字，以确保极大挡位下的三行简介也能完整容纳在分集列表中。":"第 "+e+" 集的合成简介").put("ParentBackdropItemId","series-parent").put("MediaSources",sources(false)).put("UserData",new JSONObject().put("PlaybackPositionTicks",playbackTicks("episode-"+s+"-"+e,!noProgress&&s==seasons&&e==matrixResumeEpisode?30000000:0)).put("Played",e==1||(matrixResumeEpisode>3&&e<matrixResumeEpisode))));if(placeholderDates)for(int i=0;i<episodes.length();i++){JSONObject ep=episodes.getJSONObject(i);int n=ep.optInt("IndexNumber");if(n>=4&&n<=7){ep.put("IsMissing",true).put("LocationType","Virtual");if(n<=6)ep.put("PremiereDate",placeholderDate(n-4)+"T00:00:00Z");}}if(!path.contains("Fields=MediaSources,MediaStreams,Overview"))for(int i=0;i<episodes.length();i++)episodes.getJSONObject(i).remove("MediaSources");return new JSONObject().put("Items",episodes);}
             String id=path.substring(path.lastIndexOf('/')+1).split("\\?")[0];boolean series=id.startsWith("series");JSONObject item=base(id,series?"Series":id.startsWith("episode-")?"Episode":"Movie");if(taglineFixture)item.put("Tagline","合成作品的标语");if(browseFeatures){item.put(series?"Networks":"Companies",new JSONArray().put(series?"中文平台":"中文公司"));if(studioIcons)item.put("StudioImageTags",new JSONObject().put(series?"Networks":"Companies",new JSONObject().put(series?"中文平台":"中文公司","studio-icon")));}if(liveArtwork&&changed)item.put("Name","服务器更新后的片名").put("Overview","服务器已更新的简介").put("TMDbRating",8.2).put("DoubanRating",9.1).put("IMDbRating",8.6).put("CustomRating","自定义 16+");if(id.equals("movie-no-overview"))item.put("Overview","");if(id.startsWith("episode-")){String[] coordinates=id.split("-");item.put("SeriesId",nextSeriesId).put("SeasonId","season-"+coordinates[1]).put("ParentIndexNumber",Integer.parseInt(coordinates[1])).put("IndexNumber",Integer.parseInt(coordinates[2]));}if(!series)item.put("MediaSources",sources(!id.equals("movie-single")&&!id.startsWith("episode-")));if(id.equals("movie-chapters")||id.equals("movie-no-overview"))item.put("Chapters",new JSONArray().put(new JSONObject().put("Name","开场").put("ChapterIndex",0).put("StartPositionTicks",0).put("ImageTag","chapter-0").put("ImagePath","/api/tv/Items/movie-chapters/Images/Chapter/0")).put(new JSONObject().put("Name","转折").put("ChapterIndex",1).put("StartPositionTicks",600000000).put("ImageTag","chapter-1").put("ImagePath","/api/tv/Items/movie-chapters/Images/Chapter/1")));return item;
         }
         void serve(Socket client)throws Exception{

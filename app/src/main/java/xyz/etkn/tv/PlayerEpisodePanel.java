@@ -42,7 +42,10 @@ final class PlayerEpisodePanel extends LinearLayout {
         viewport.setOnScrollChangeListener((view,x,y,oldX,oldY)->{if(isShown()&&initialized&&!loading&&retryPage==null&&next<total&&y+view.getHeight()>=scrollBody.getHeight()-host.dp(280))loadPage(next,false,false);});
         notice=host.text("",13,TvActivity.MUTED);addView(notice);
         retry=host.button("重试",()->{if(retryPage!=null)retryPage.run();});retry.setBackground(host.selectionBackground());retry.setVisibility(GONE);addView(retry);
+        host.imageSizeUpdater(this,()->{android.view.ViewGroup.LayoutParams bounds=getLayoutParams();if(bounds!=null&&bounds.width!=panelWidth()){bounds.width=panelWidth();setLayoutParams(bounds);}});
+        viewport.addOnLayoutChangeListener((view,l,t,r,b,ol,ot,or,ob)->{if(b-t!=ob-ot)for(int i=0;i<cards.getChildCount();i++)((Runnable)cards.getChildAt(i).getTag(R.id.image_size_updater)).run();});
     }
+    int panelWidth(){return Math.min(host.imageDp(400),host.dp(host.getResources().getConfiguration().screenWidthDp*3/5));}
     boolean contains(View view){while(view!=null){if(view==this)return true;view=view.getParent() instanceof View?(View)view.getParent():null;}return false;}
     void open(){
         if(loading)return;
@@ -96,23 +99,35 @@ final class PlayerEpisodePanel extends LinearLayout {
         if(reset||previous){cards.removeAllViews();cells.clear();currentCell=null;currentEpisode=null;appendCards(episodes);View target=cells.get(restore);focus(target==null?cards.getChildAt(0):target);}
         else appendCards(rows);
     }
-    private void focus(View target){if(target!=null)target.post(()->{if(isShown()&&target.isAttachedToWindow())target.requestFocus();});}
+    private void focus(View target){if(target!=null)target.post(()->{if(isShown()&&target.isAttachedToWindow()){target.requestFocus();viewport.scrollTo(0,cards.getTop()+target.getTop()-cards.getPaddingTop());}});}
     private void appendCards(List<JSONObject> rows){
-        int width=Math.min(360,host.getResources().getConfiguration().screenWidthDp*3/5)-60;
         for(JSONObject episode:rows){
             boolean current=currentId.equals(episode.optString("Id"));JSONObject data=episode.optJSONObject("UserData");boolean watched=data!=null&&data.optBoolean("Played");
             int progress=progress(watched,DetailPresentation.position(episode),episode.optLong("RunTimeTicks"));
-            LinearLayout card=new LinearLayout(host);card.setOrientation(VERTICAL);card.setPadding(host.dp(6),host.dp(6),host.dp(6),host.dp(8));card.setFocusable(true);card.setClickable(true);card.setBackground(host.episodeBackground(progress));
+            LinearLayout card=new LinearLayout(host);card.setOrientation(HORIZONTAL);card.setGravity(Gravity.CENTER_VERTICAL);card.setFocusable(true);card.setClickable(true);card.setBackground(host.episodeBackground(progress));
             card.setOnClickListener(view->select.accept(episode));describe(card,episode,watched,progress,current);
-            LayoutParams bounds=new LayoutParams(-1,-2);bounds.bottomMargin=host.dp(14);cards.addView(card,bounds);cells.put(episode.optString("Id"),card);
-            FrameLayout art=new FrameLayout(host);card.addView(art,new LayoutParams(-1,host.dp(width*9/16)));
+            cards.addView(card,new LayoutParams(-1,-2));cells.put(episode.optString("Id"),card);
+            FrameLayout art=new FrameLayout(host);card.addView(art,new LayoutParams(0,0));
             ImageView image=new ImageView(host);image.setScaleType(ImageView.ScaleType.CENTER_CROP);Images.rounded(image,host.dp(8));image.setForeground(Images.border(host.dp(8)));art.addView(image,new FrameLayout.LayoutParams(-1,-1));
             TextView missing=host.text("暂无剧照",13,TvActivity.MUTED);missing.setGravity(Gravity.CENTER);art.addView(missing,new FrameLayout.LayoutParams(-1,-1));
             Images.visibleArtwork(host.api,size->host.api.artwork(episode,"Primary",size),image,ok->missing.setVisibility(ok?GONE:VISIBLE));
-            if(watched||current||DetailPresentation.placeholder(episode)){TextView badge=host.text(current?"正在播放":watched?"✓ 已观看":episode.optBoolean("IsUnaired")?"未播出":"未入库",12,current||watched?TvActivity.ACCENT:TvActivity.TEXT);badge.setBackground(host.shape(TvActivity.PANEL,0));badge.setPadding(host.dp(6),host.dp(3),host.dp(6),host.dp(3));FrameLayout.LayoutParams mark=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.END);mark.setMargins(host.dp(4),host.dp(4),host.dp(4),0);art.addView(badge,mark);}
-            TextView title=host.text(DetailPresentation.episodeNumber(episode)+" · "+EtknApi.title(episode),16,current?TvActivity.ACCENT:TvActivity.TEXT);title.setMaxLines(1);title.setEllipsize(TextUtils.TruncateAt.END);title.setPadding(host.dp(3),host.dp(7),host.dp(3),host.dp(3));card.addView(title);
-            if(DetailPresentation.placeholder(episode)){TextView date=host.text("播出："+DetailPresentation.airDate(episode),12,TvActivity.MUTED);card.addView(date);}
-            TextView overview=host.text(episode.optString("Overview").isEmpty()?"暂无分集简介":episode.optString("Overview"),13,TvActivity.MUTED);overview.setMaxLines(3);overview.setEllipsize(TextUtils.TruncateAt.END);overview.setPadding(host.dp(3),0,host.dp(3),0);card.addView(overview);
+            TextView badge=host.text(current?"正在播放":watched?"✓ 已观看":episode.optBoolean("IsUnaired")?"未播出":"未入库",10,current||watched?TvActivity.ACCENT:TvActivity.TEXT);
+            if(watched||current||DetailPresentation.placeholder(episode)){badge.setBackground(host.shape(TvActivity.PANEL,0));badge.setPadding(host.dp(4),host.dp(2),host.dp(4),host.dp(2));FrameLayout.LayoutParams mark=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.END);mark.setMargins(host.dp(3),host.dp(3),host.dp(3),0);art.addView(badge,mark);}
+            LinearLayout info=host.column();info.setGravity(Gravity.CENTER_VERTICAL);card.addView(info,new LayoutParams(0,-1,1));
+            TextView title=host.text(DetailPresentation.episodeNumber(episode)+" · "+EtknApi.title(episode),14,current?TvActivity.ACCENT:TvActivity.TEXT);title.setMaxLines(1);title.setEllipsize(TextUtils.TruncateAt.END);title.setIncludeFontPadding(false);info.addView(title);
+            TextView date=host.text("播出："+DetailPresentation.airDate(episode),11,TvActivity.MUTED);date.setMaxLines(1);date.setEllipsize(TextUtils.TruncateAt.END);date.setIncludeFontPadding(false);if(DetailPresentation.placeholder(episode))info.addView(date);
+            TextView overview=host.text(episode.optString("Overview").isEmpty()?"暂无分集简介":episode.optString("Overview"),12,TvActivity.MUTED);overview.setMaxLines(3);overview.setEllipsize(TextUtils.TruncateAt.END);overview.setIncludeFontPadding(false);info.addView(overview);
+            Runnable resize=()->{
+                int gap=host.imageDp(6),height=host.imageDp(108);
+                // 每档最多占视口的三分之一，给三条完整分集及间距留足空间。
+                if(viewport.getHeight()>0)height=Math.min(height,Math.max(1,(viewport.getHeight()-cards.getPaddingTop()-cards.getPaddingBottom())/3-gap));
+                float scale=Math.min(host.imageScale(),(float)height/host.dp(108));int padding=Math.round(host.dp(6)*scale);
+                LayoutParams bounds=(LayoutParams)card.getLayoutParams();bounds.height=height;bounds.bottomMargin=gap;card.setLayoutParams(bounds);card.setPadding(padding,padding,padding,padding);
+                LayoutParams picture=(LayoutParams)art.getLayoutParams();picture.width=Math.round(host.dp(128)*scale);picture.height=picture.width*9/16;art.setLayoutParams(picture);
+                info.setPadding(Math.round(host.dp(8)*scale),0,Math.round(host.dp(2)*scale),0);title.setPadding(0,0,0,Math.round(host.dp(3)*scale));
+                overview.setPadding(0,0,0,0);date.setPadding(0,0,0,0);title.setTextSize(14*scale);overview.setTextSize(12*scale);date.setTextSize(11*scale);badge.setTextSize(10*scale);missing.setTextSize(11*scale);
+            };
+            host.imageSizeUpdater(card,resize);resize.run();
             if(current){currentCell=card;currentEpisode=episode;}
         }
     }

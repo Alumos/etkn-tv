@@ -157,7 +157,7 @@ public final class PlayerActivity extends TvActivity {
         playbackLoading=new ProgressBar(this,null,android.R.attr.progressBarStyleLarge);playbackLoading.setIndeterminate(true);playbackLoading.setContentDescription("正在读取播放信息");playbackLoading.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(resolveColor(ACCENT)));stage.addView(playbackLoading,new FrameLayout.LayoutParams(dp(64),dp(64),Gravity.CENTER));
         skipNotice=status;
         episodePanel=new PlayerEpisodePanel(this,itemId,getIntent().getStringExtra("seriesId"),this::playEpisode);
-        episodePanel.setVisibility(View.GONE);stage.addView(episodePanel,new FrameLayout.LayoutParams(dp(Math.min(360,getResources().getConfiguration().screenWidthDp*3/5)),-1,Gravity.END));
+        episodePanel.setVisibility(View.GONE);stage.addView(episodePanel,new FrameLayout.LayoutParams(episodePanel.panelWidth(),-1,Gravity.END));
         setContentView(stage);video.hideController();video.requestFocus();
         if(queueMode&&!getIntent().getBooleanExtra("resolved",false)){showLoading();resolveQueueUnit(itemId,true);return;}
         String requestedSource=state==null?getIntent().getStringExtra("sourceId"):state.getString("sourceId",getIntent().getStringExtra("sourceId"));
