@@ -79,6 +79,29 @@ public final class DetailActivity extends TvActivity {
     private View castEntry;
     private View previousFocus;
     private int mainMenuTransitionKey;
+    private boolean episodeMatrixFocusLock;
+
+    private final class EpisodeDetailScroll extends ScrollView {
+        EpisodeDetailScroll(Context context) { super(context); }
+        @Override protected int computeScrollDeltaToGetChildRectOnScreen(Rect rectangle) {
+            Rect expanded=new Rect(rectangle);int margin=FocusScroll.margin(getContext());expanded.inset(-margin,-margin);
+            return super.computeScrollDeltaToGetChildRectOnScreen(expanded);
+        }
+        @Override public boolean requestChildRectangleOnScreen(View child, Rect rectangle, boolean immediate) {
+            if(episodeMatrixFocusLock&&preview!=null&&preview.isLaidOut()) {
+                int target=episodePreviewScrollY();
+                if(immediate) scrollTo(0,target); else smoothScrollTo(0,target);
+                return true;
+            }
+            return super.requestChildRectangleOnScreen(child,rectangle,immediate);
+        }
+    }
+
+    private int episodePreviewScrollY() {
+        if(scroll==null||preview==null||content==null||!preview.isLaidOut()) return scroll==null?0:scroll.getScrollY();
+        Rect rect=new Rect();preview.getDrawingRect(rect);content.offsetDescendantRectToMyCoords(preview,rect);
+        return Math.max(0,rect.top-dp(12));
+    }
 
     private boolean inEpisodeMatrix(View view){while(view!=null){if(view==episodeGrid)return true;android.view.ViewParent parent=view.getParent();view=parent instanceof View?(View)parent:null;}return false;}
     private boolean inCast(View view){while(view!=null){if(view==castScroll)return true;android.view.ViewParent parent=view.getParent();view=parent instanceof View?(View)parent:null;}return false;}
@@ -109,7 +132,8 @@ public final class DetailActivity extends TvActivity {
         backdrop=new ImageView(this);backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);Images.rounded(backdrop,0);
         stage.addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
         stage.addView(backdropShade(),new FrameLayout.LayoutParams(-1,-1));
-        scroll=new FocusScroll.Vertical(this);scroll.setFillViewport(true);scroll.setClipToPadding(false);
+        scroll=new EpisodeDetailScroll(this);scroll.setFillViewport(true);scroll.setClipToPadding(false);
+        scroll.setOnScrollChangeListener((view,x,y,oldX,oldY)->{if(episodeMatrixFocusLock&&view.getScrollY()!=episodePreviewScrollY())view.scrollTo(0,episodePreviewScrollY());});
         content=column();content.setPadding(dp(42),dp(26),dp(42),dp(28));scroll.addView(content);stage.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
         setupMainMenu(stage);
         status=text("正在读取详情…",13,MUTED);content.addView(status);setContentView(stage);
@@ -540,7 +564,7 @@ public final class DetailActivity extends TvActivity {
     }
     private void appendEpisodeCells(GridLayout grid,List<JSONObject> episodes,JSONObject selected){
         int columns=grid.getColumnCount(),available=getResources().getConfiguration().screenWidthDp-84,cellWidth=(dp(available)-dp(10)*(columns-1))/columns;
-        for(JSONObject episode:episodes){int index=grid.getChildCount();boolean dates=DetailPresentation.episodeRowHasDates(episodeMatrixEpisodes,index,columns);int cellHeight=dates?68:44;Button cell=button("",()->playEpisode(episode));if(dates){cell.setSingleLine(false);cell.setMaxLines(2);cell.setPadding(dp(6),0,dp(6),0);}updateEpisodeCell(cell,episode,dates);episodeCells.put(episode.optString("Id"),cell);episodeCellDates.put(episode.optString("Id"),dates);if(selected!=null&&episode.optString("Id").equals(selected.optString("Id")))episodeEntry=cell;GridLayout.LayoutParams bounds=new GridLayout.LayoutParams();bounds.width=cellWidth;bounds.height=dp(cellHeight);bounds.setMargins(0,dp(7),index%columns==columns-1?0:dp(10),dp(7));grid.addView(cell,bounds);cell.setOnFocusChangeListener((view,focused)->{if(focused){setPlayable(episode);updatePreview(episode);Runnable keepPreview=()->{if(preview==null||episodeMatrixScroll==null)return;Rect rect=new Rect();preview.getDrawingRect(rect);content.offsetDescendantRectToMyCoords(preview,rect);scroll.smoothScrollTo(0,Math.max(0,rect.top-dp(24)));};scroll.post(keepPreview);scroll.postDelayed(keepPreview,120);}});}
+        for(JSONObject episode:episodes){int index=grid.getChildCount();boolean dates=DetailPresentation.episodeRowHasDates(episodeMatrixEpisodes,index,columns);int cellHeight=dates?68:44;Button cell=button("",()->playEpisode(episode));if(dates){cell.setSingleLine(false);cell.setMaxLines(2);cell.setPadding(dp(6),0,dp(6),0);}updateEpisodeCell(cell,episode,dates);episodeCells.put(episode.optString("Id"),cell);episodeCellDates.put(episode.optString("Id"),dates);if(selected!=null&&episode.optString("Id").equals(selected.optString("Id")))episodeEntry=cell;GridLayout.LayoutParams bounds=new GridLayout.LayoutParams();bounds.width=cellWidth;bounds.height=dp(cellHeight);bounds.setMargins(0,dp(7),index%columns==columns-1?0:dp(10),dp(7));grid.addView(cell,bounds);cell.setOnFocusChangeListener((view,focused)->{if(focused){episodeMatrixFocusLock=true;setPlayable(episode);updatePreview(episode);scroll.post(()->scroll.smoothScrollTo(0,episodePreviewScrollY()));scroll.postDelayed(()->scroll.smoothScrollTo(0,episodePreviewScrollY()),120);}else cell.post(()->{if(!inEpisodeMatrix(getCurrentFocus()))episodeMatrixFocusLock=false;});});}
     }
     private void loadEpisodeSeason(String seasonId){
         if(episodePageLoading)return;episodePageLoading=true;int ticket=++episodePageTicket;status.setText("正在读取分集…");String series=item.optString("Type").equals("Series")?item.optString("Id"):item.optString("SeriesId",item.optString("ParentId"));
