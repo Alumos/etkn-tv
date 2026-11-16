@@ -110,9 +110,14 @@ public final class DetailActivity extends TvActivity {
         if(event.getAction()==KeyEvent.ACTION_DOWN){
             if(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&episodeGrid!=null&&episodeMatrixScroll!=null){
                 View current=getCurrentFocus();int index=episodeGrid.indexOfChild(current),columns=episodeGrid.getColumnCount();
-                if(index>=0&&index<columns&&episodePageStart>0){loadPreviousEpisodes();return true;}
+                // Matrix rows own the up key, including rows outside the clipped viewport.
+                if(index>=columns){episodeGrid.getChildAt(index-columns).requestFocus(View.FOCUS_UP);return true;}
+                if(index>=0){
+                    if(episodePageStart>0){loadPreviousEpisodes();return true;}
+                    if(visibleSeasons.size()<=1)return true;
+                }
             }
-            if(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&menu.getVisibility()!=View.VISIBLE){View focused=getCurrentFocus();if(focused==null||focused.focusSearch(View.FOCUS_UP)==null){showMainMenu();mainMenuTransitionKey=event.getKeyCode();return true;}}
+            if(!episodePicker&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&menu.getVisibility()!=View.VISIBLE){View focused=getCurrentFocus();if(focused==null||focused.focusSearch(View.FOCUS_UP)==null){showMainMenu();mainMenuTransitionKey=event.getKeyCode();return true;}}
             if(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN&&menu.getVisibility()==View.VISIBLE){hideMainMenu();mainMenuTransitionKey=event.getKeyCode();return true;}
         }
         if(event.getAction()==KeyEvent.ACTION_DOWN&&(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP)){
@@ -584,7 +589,8 @@ public final class DetailActivity extends TvActivity {
     private void loadEpisodePage(int offset,boolean previous){
         if(episodePageLoading||episodePageSeason.isEmpty()||(!previous&&episodePageNext>=episodePageTotal)||offset<0)return;episodePageLoading=true;int ticket=++episodePageTicket;String focusId="";View focused=getCurrentFocus();if(focused!=null&&focused.getContentDescription()!=null)for(Map.Entry<String,Button> entry:episodeCells.entrySet())if(entry.getValue()==focused)focusId=entry.getKey();String series=item.optString("Type").equals("Series")?item.optString("Id"):item.optString("SeriesId",item.optString("ParentId"));
         final String restoreId=focusId;
-        async(()->api.get("/api/tv/Shows/"+EtknApi.encode(series)+"/EpisodePage?UserId="+EtknApi.encode(api.session.userId())+"&SeasonId="+EtknApi.encode(episodePageSeason)+"&StartIndex="+offset+"&Limit=40"),page->{if(ticket!=episodePageTicket)return;episodePageLoading=false;List<JSONObject> rows=EtknApi.rows(page);if(previous){allEpisodes.addAll(0,rows);episodePageStart=page.optInt("StartIndex",offset);showSeason(episodePageSeason,playable);Button restore=episodeCells.get(restoreId);if(restore!=null)restore.post(restore::requestFocus);}else{allEpisodes.addAll(rows);episodePageNext=page.optInt("NextStartIndex",episodePageNext+rows.size());episodePageTotal=page.optInt("TotalRecordCount",episodePageTotal);episodeMatrixEpisodes.addAll(rows);appendEpisodeCells(episodeGrid,rows,playable);}status.setText(episodePageTotal+" 集");});
+        int limit=previous?Math.min(40,episodePageStart):40;
+        async(()->api.get("/api/tv/Shows/"+EtknApi.encode(series)+"/EpisodePage?UserId="+EtknApi.encode(api.session.userId())+"&SeasonId="+EtknApi.encode(episodePageSeason)+"&StartIndex="+offset+"&Limit="+limit),page->{if(ticket!=episodePageTicket)return;episodePageLoading=false;List<JSONObject> rows=EtknApi.rows(page);if(previous){allEpisodes.addAll(0,rows);episodePageStart=page.optInt("StartIndex",offset);showSeason(episodePageSeason,playable);Button restore=episodeCells.get(restoreId);if(restore!=null)restore.post(restore::requestFocus);}else{allEpisodes.addAll(rows);episodePageNext=page.optInt("NextStartIndex",episodePageNext+rows.size());episodePageTotal=page.optInt("TotalRecordCount",episodePageTotal);episodeMatrixEpisodes.addAll(rows);appendEpisodeCells(episodeGrid,rows,playable);}status.setText(episodePageTotal+" 集");});
     }
     private void playEpisode(JSONObject episode){
         setPlayable(episode);JSONArray media=episode.optJSONArray("MediaSources");if(media!=null&&media.length()>0){play(false);return;}String id=episode.optString("Id");status.setText("正在读取分集…");async(()->api.get(api.userPath()+"/Items/"+EtknApi.encode(id)+"?Fields=MediaSources,MediaStreams,Overview"),value->{if(playable!=null&&id.equals(playable.optString("Id"))){copyPresentation(playable,value);setPlayable(value);play(false);}});

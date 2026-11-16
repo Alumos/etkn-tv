@@ -458,8 +458,8 @@ public class DetailFlowTest {
         onMain(()->((androidx.media3.ui.PlayerView)field(playback,"video")).hideController());settle();
         instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN);settle();
         assertSame(field(playback,"nextButton"),playback.getCurrentFocus());
-        ViewGroup actions=(ViewGroup)((View)field(playback,"nextButton")).getParent();assertEquals(3,actions.indexOfChild((View)field(playback,"nextButton")));assertEquals(4,actions.indexOfChild((View)field(playback,"speedButton")));
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_LEFT);assertSame(field(playback,"subtitleButton"),playback.getCurrentFocus());instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT);instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT);assertSame(field(playback,"speedButton"),playback.getCurrentFocus());instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_LEFT);screenshot("next-episode-controls.png");
+        ViewGroup actions=(ViewGroup)((View)field(playback,"nextButton")).getParent();assertEquals(3,actions.indexOfChild((View)field(playback,"nextButton")));assertEquals(5,actions.indexOfChild((View)field(playback,"speedButton")));
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_LEFT);assertSame(field(playback,"subtitleButton"),playback.getCurrentFocus());instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT);instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT);assertSame(field(playback,"bitrateButton"),playback.getCurrentFocus());instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT);assertSame(field(playback,"speedButton"),playback.getCurrentFocus());instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_LEFT);instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_LEFT);assertSame(field(playback,"nextButton"),playback.getCurrentFocus());screenshot("next-episode-controls.png");
         instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);
         playback=(PlayerActivity)monitor.waitForActivityWithTimeout(10000);instrumentation.removeMonitor(monitor);assertNotNull(playback);
         await(()->field(playback,"player")!=null&&((ExoPlayer)field(playback,"player")).getPlaybackState()==Player.STATE_READY);
@@ -493,7 +493,7 @@ public class DetailFlowTest {
     }
     @Test public void endedEpisodeCrossesSeasonAndUsesTargetSeasonLockThenHidesAtSeriesEnd()throws Exception{
         try(Fixture server=new Fixture()){
-            server.ordinalFixture=true;openEpisodes(server,"series-many");
+            server.ordinalFixture=true;server.nextSeriesId="series-many";openEpisodes(server,"series-many");
             new TvPreferences(detail,detail.api).saveSeasonAudio("season-1",1);
             new TvPreferences(detail,detail.api).saveSeasonAudio("season-2",0);
             onMain(()->button("第 1 季").performClick());settle();
@@ -503,7 +503,7 @@ public class DetailFlowTest {
             await(()->((View)field(playback,"nextButton")).getVisibility()==View.VISIBLE);endAndPlayNext();
             assertEquals("episode-2-1",playback.getIntent().getStringExtra("id"));assertEquals("season-2",playback.getIntent().getStringExtra("seasonKey"));
             await(()->"1".equals(selected(C.TRACK_TYPE_AUDIO)));assertEquals(0,field(playback,"audioIndex"));
-            closePlayer();onMain(()->detail.finish());open(server,"episode-1-24");play();settle();assertEquals(View.GONE,((View)field(playback,"nextButton")).getVisibility());
+            closePlayer();onMain(()->detail.finish());server.nextSeriesId="series-one";open(server,"episode-1-24");play();settle();assertEquals(View.GONE,((View)field(playback,"nextButton")).getVisibility());
         }finally{cleanup();}
     }
     @Test public void resumeNextEpisodeLookupFailureDoesNotInterruptPlayback()throws Exception{
@@ -890,7 +890,9 @@ public class DetailFlowTest {
     }
 
     private Button panelButton(String title){return findButton((View)field(playback,"episodePanel"),title);}
+    private View panelCard(int number){for(View view:descendants((View)field(playback,"episodePanel")))if(view.getContentDescription()!=null&&view.getContentDescription().toString().startsWith("第 "+number+" 集，"))return view;return null;}
     private void resumeEpisode(Fixture server,String id)throws Exception{
+        server.nextSeriesId="series-many";
         openEpisodes(server,"series-many");JSONObject ep=EtknApi.rows(server.response("/api/tv/Shows/series-many/Episodes")).stream().filter(e->id.equals(e.optString("Id"))).findFirst().get();
         Instrumentation.ActivityMonitor monitor=instrumentation.addMonitor(PlayerActivity.class.getName(),null,false);
         onMain(()->detail.resumePlayback(ep));playback=(PlayerActivity)monitor.waitForActivityWithTimeout(10000);instrumentation.removeMonitor(monitor);assertNotNull(playback);
@@ -902,16 +904,18 @@ public class DetailFlowTest {
             server.ordinalFixture=true;resumeEpisode(server,"episode-2-3");
             new TvPreferences(playback,playback.api).saveSeasonAudio("season-1",1);server.audioOffset=20;
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);settle();
-            onMain(()->assertSeasonPosterOverlay(playback,panelButton("第 1 季")));screenshot("player-season-poster-overlay.png");
-            View panel=(View)field(playback,"episodePanel");assertTrue(panel.isShown());Button current=panelButton("第 3 集 ▶");assertSame(current,playback.getCurrentFocus());
-            assertTrue(current.getContentDescription().toString().contains("正在播放"));Button watched=panelButton("第 1 集 ✓");assertNotNull(watched);
+            await(()->panelCard(3)!=null);onMain(()->assertSeasonPosterOverlay(playback,panelButton("第 1 季")));screenshot("player-season-poster-overlay.png");
+            View panel=(View)field(playback,"episodePanel");assertTrue(panel.isShown());View current=panelCard(3);await(current::hasFocus);
+            assertTrue(current.getContentDescription().toString().contains("正在播放"));
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);await(()->panelCard(1)!=null);View watched=panelCard(1);assertNotNull(watched);
             assertEquals(10000,((android.graphics.drawable.LayerDrawable)watched.getBackground()).getDrawable(1).getLevel());
+            current=panelCard(3);View active=current;onMain(active::requestFocus);settle();
             onMain(()->((ExoPlayer)field(playback,"player")).play());await(()->((ExoPlayer)field(playback,"player")).getCurrentPosition()>=1000);onMain(()->((ExoPlayer)field(playback,"player")).pause());settle();
-            await(()->((android.graphics.drawable.LayerDrawable)current.getBackground()).getDrawable(1).getLevel()>0);
+            await(()->((android.graphics.drawable.LayerDrawable)active.getBackground()).getDrawable(1).getLevel()>0);
             screenshot("player-current-episode-progress.png");
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);settle();assertFalse(panel.isShown());assertFalse(playback.isFinishing());assertEquals(0,server.stopped.size());
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);settle();onMain(()->panelButton("第 1 季").performClick());settle();
-            Button resumed=panelButton("第 2 集");assertNotNull(resumed);assertNull(panelButton("第 3 集 ▶"));screenshot("player-episode-matrix.png");
+            await(()->panelCard(2)!=null);View resumed=panelCard(2);assertNotNull(resumed);assertFalse(panelCard(3).getContentDescription().toString().contains("正在播放"));screenshot("player-episode-cards.png");
             Instrumentation.ActivityMonitor monitor=instrumentation.addMonitor(PlayerActivity.class.getName(),null,false);PlayerActivity previous=playback;
             onMain(()->{resumed.requestFocus();resumed.performClick();});playback=(PlayerActivity)monitor.waitForActivityWithTimeout(10000);instrumentation.removeMonitor(monitor);assertNotNull(playback);
             await(()->field(playback,"player")!=null&&((ExoPlayer)field(playback,"player")).getPlaybackState()==Player.STATE_READY);onMain(()->((ExoPlayer)field(playback,"player")).pause());
@@ -919,17 +923,44 @@ public class DetailFlowTest {
             await(()->"2".equals(selected(C.TRACK_TYPE_AUDIO)));assertEquals(24,field(playback,"audioIndex"));await(()->server.stopped.size()==1);assertEquals("episode-2-3",server.stopped.get(0).optString("ItemId"));
         }finally{cleanup();}
     }
+    @Test public void episodeCardsLoadFortyAtATimeAndReturnThroughSlowPreviousPages()throws Exception{
+        try(Fixture server=new Fixture()){
+            server.matrixEpisodeCount=420;server.matrixResumeEpisode=219;open(server,"episode-1-219");play();server.requests.clear();server.imagePaths.clear();
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);await(()->panelCard(219)!=null);settle();
+            Object panel=field(playback,"episodePanel");LinearLayout cards=(LinearLayout)field(panel,"cards");View current=panelCard(219);
+            assertEquals(420,field(panel,"total"));assertEquals(218,field(panel,"start"));assertEquals("首次只取40集",40,cards.getChildCount());assertSame(current,playback.getCurrentFocus());
+            assertTrue(descendants(current).stream().anyMatch(view->view instanceof TextView&&"第 219 集的合成简介".contentEquals(((TextView)view).getText())));
+            assertTrue("未进入视口的剧照不能提前请求",server.imagePaths.stream().noneMatch(path->path.contains("/Items/episode-1-250/Images/Primary")));assertTrue(server.imagePaths.size()<10);
+            onMain(()->{assertFullyVisible(current);Rect frame=new Rect();assertTrue(((View)field(panel,"viewportFrame")).getGlobalVisibleRect(frame));Rect heading=new Rect();assertTrue(((View)field(panel,"heading")).getGlobalVisibleRect(heading));assertTrue(frame.top>=heading.bottom);});
+            screenshot("player-420-cards-initial.png");
+            server.episodePageRequested=new java.util.concurrent.CountDownLatch(1);server.episodePageGate=new java.util.concurrent.CountDownLatch(1);
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);assertTrue(server.episodePageRequested.await(5,java.util.concurrent.TimeUnit.SECONDS));
+            onMain(()->{for(int repeat=0;repeat<8;repeat++){playback.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_UP));playback.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_UP));}assertSame("等待前页时焦点不能离开当前分集",current,playback.getCurrentFocus());assertEquals(40,cards.getChildCount());});
+            Thread.sleep(1200);server.episodePageGate.countDown();await(()->(Integer)field(panel,"start")==178);server.episodePageGate=null;settle();
+            assertEquals(80,cards.getChildCount());assertSame(panelCard(219),playback.getCurrentFocus());
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);settle();assertSame(panelCard(218),playback.getCurrentFocus());assertTrue(panelCard(218).getContentDescription().toString().contains("已观看"));
+            onMain(()->panelCard(258).requestFocus());await(()->(Integer)field(panel,"next")==298);settle();assertSame("追加页不抢焦点",panelCard(258),playback.getCurrentFocus());screenshot("player-420-cards-appended.png");
+            while((Integer)field(panel,"start")>0){
+                int previous=(Integer)field(panel,"start");onMain(()->cards.getChildAt(0).requestFocus());settle();instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);await(()->(Integer)field(panel,"start")<previous);settle();
+            }
+            assertEquals("前页不足40集时不能重复插入",((List<?>)field(panel,"episodes")).size(),((Map<?,?>)field(panel,"cells")).size());
+            onMain(()->cards.getChildAt(0).requestFocus());settle();View first=playback.getCurrentFocus();
+            for(int repeat=0;repeat<4;repeat++)instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);settle();assertSame(first,playback.getCurrentFocus());onMain(()->assertFullyVisible(first));
+            assertTrue("播放分集面板禁止整剧拉取",server.requests.stream().noneMatch(path->path.contains("/Episodes?")));assertTrue(server.requests.stream().filter(path->path.contains("/EpisodePage?")).allMatch(path->path.contains("Limit=40")||path.contains("Limit=18")));
+            assertEquals(0,server.stopped.size());onMain(()->assertNull(((ExoPlayer)field(playback,"player")).getPlayerError()));screenshot("player-420-cards-returned-watched.png");
+        }finally{cleanup();}
+    }
     @Test public void episodePanelRetryLateResultsAndBackKeepCurrentPlayback()throws Exception{
         try(Fixture server=new Fixture()){
-            open(server,"episode-1-2");server.failNext=true;play();await(()->Boolean.TRUE.equals(field(playback,"episodesFailed")));
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);settle();assertNotNull(panelButton("重试"));assertFalse(playback.isFinishing());
-            server.failNext=false;server.nextRequested=new java.util.concurrent.CountDownLatch(1);server.nextGate=new java.util.concurrent.CountDownLatch(1);
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);assertTrue(server.nextRequested.await(5,java.util.concurrent.TimeUnit.SECONDS));
+            open(server,"episode-1-2");server.failEpisodePage=true;play();
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);await(()->panelButton("重试")!=null&&panelButton("重试").isShown());settle();assertFalse(playback.isFinishing());
+            server.failEpisodePage=false;server.episodePageRequested=new java.util.concurrent.CountDownLatch(1);server.episodePageGate=new java.util.concurrent.CountDownLatch(1);
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);assertTrue(server.episodePageRequested.await(5,java.util.concurrent.TimeUnit.SECONDS));
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);settle();assertFalse(((View)field(playback,"episodePanel")).isShown());assertFalse(playback.isFinishing());
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN);settle();instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_LEFT);settle();View focused=playback.getCurrentFocus();
-            server.nextGate.countDown();await(()->!Boolean.TRUE.equals(field(playback,"episodesLoading")));settle();
+            server.episodePageGate.countDown();await(()->!Boolean.TRUE.equals(field(field(playback,"episodePanel"),"loading")));settle();
             assertFalse(((View)field(playback,"episodePanel")).isShown());assertSame(focused,playback.getCurrentFocus());assertEquals(0,server.stopped.size());
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);settle();assertNotNull(panelButton("第 2 集 ▶"));assertEquals(View.GONE,((View)field(playback,"controls")).getVisibility());
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);settle();assertNotNull(panelCard(2));assertEquals(View.GONE,((View)field(playback,"controls")).getVisibility());
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);settle();assertFalse(playback.isFinishing());
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_MENU);settle();assertTrue(((AlertDialog)field(playback,"trackDialog")).isShowing());onMain(()->((AlertDialog)field(playback,"trackDialog")).dismiss());
         }finally{cleanup();}
@@ -1190,7 +1221,7 @@ public class DetailFlowTest {
     }
     @Test public void episodeMatrixScrollStaysInsideTransparentViewport()throws Exception{
         try(Fixture server=new Fixture()){
-            server.matrixEpisodeCount=96;openEpisodes(server,"series-one");
+            server.matrixEpisodeCount=96;server.noProgress=true;openEpisodes(server,"series-one");
             onMain(()->detail.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE));
             ScrollView matrix=(ScrollView)field(detail,"episodeMatrixScroll"),page=(ScrollView)field(detail,"scroll");
             GridLayout grid=(GridLayout)field(detail,"episodeGrid");View preview=(View)field(detail,"preview");
@@ -1210,10 +1241,46 @@ public class DetailFlowTest {
             onMain(()->{assertFullyVisible(detail.getCurrentFocus());assertTrue("向上可返回首行分集",grid.indexOfChild(detail.getCurrentFocus())>=0&&grid.indexOfChild(detail.getCurrentFocus())<grid.getColumnCount());});screenshot("matrix-scrolled-up.png");
         }finally{cleanup();}
     }
+    @Test public void episodeMatrixCanReverseQuicklyAndReturnAcrossPreviousPages()throws Exception{
+        try(Fixture server=new Fixture()){
+            server.matrixEpisodeCount=420;server.matrixResumeEpisode=219;openEpisodes(server,"series-one");
+            onMain(()->detail.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE));
+            assertEquals(218,field(detail,"episodePageStart"));assertSame(button("第 219 集"),detail.getCurrentFocus());
+            onMain(()->{
+                for(int key:new int[]{20,20,20,19,19,19}){
+                    detail.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,key));
+                    detail.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP,key));
+                }
+            });settle();screenshot("matrix-rapid-reverse.png");
+            assertSame("连续下上键必须逐行回到原分集",button("第 219 集"),detail.getCurrentFocus());
+            boolean slowPageVerified=false;for(int step=0;step<90;step++){
+                GridLayout grid=(GridLayout)field(detail,"episodeGrid");int index=grid.indexOfChild(detail.getCurrentFocus()),columns=grid.getColumnCount();
+                assertTrue("焦点必须留在矩阵",index>=0);
+                if(index<columns&&(Integer)field(detail,"episodePageStart")==0)break;
+                View expected=index>=columns?grid.getChildAt(index-columns):detail.getCurrentFocus();String label=((TextView)expected).getText().toString();
+                if(index<columns&&!slowPageVerified){
+                    int start=(Integer)field(detail,"episodePageStart");View retained=detail.getCurrentFocus();
+                    server.episodePageRequested=new java.util.concurrent.CountDownLatch(1);server.episodePageGate=new java.util.concurrent.CountDownLatch(1);
+                    instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);assertTrue(server.episodePageRequested.await(5,java.util.concurrent.TimeUnit.SECONDS));
+                    onMain(()->{for(int repeat=0;repeat<8;repeat++){detail.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_UP));detail.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_UP));}assertSame("懒加载等待时保留当前集",retained,detail.getCurrentFocus());assertEquals(View.GONE,((View)field(detail,"menu")).getVisibility());});
+                    Thread.sleep(1200);server.episodePageGate.countDown();await(()->(Integer)field(detail,"episodePageStart")<start);server.episodePageGate=null;slowPageVerified=true;settle();
+                }else{instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);settle();}
+                onMain(()->{
+                    assertEquals("上键应返回上一行或加载上一页后保留当前集",label,((TextView)detail.getCurrentFocus()).getText().toString());
+                    assertEquals("前面仍有分集时不得弹出主菜单",View.GONE,((View)field(detail,"menu")).getVisibility());
+                    assertFullyVisible(detail.getCurrentFocus());assertFullyVisible((View)field(detail,"preview"));
+                });
+            }
+            GridLayout grid=(GridLayout)field(detail,"episodeGrid");
+            assertEquals(0,field(detail,"episodePageStart"));assertTrue(grid.indexOfChild(detail.getCurrentFocus())<grid.getColumnCount());
+            assertTrue(button("第 1 集").getContentDescription().toString().contains("已观看"));assertEquals("前页不足40集不能重复插入",((List<?>)field(detail,"allEpisodes")).size(),((Map<?,?>)field(detail,"episodeCells")).size());screenshot("matrix-returned-watched-first-page.png");
+            View retained=detail.getCurrentFocus();for(int repeat=0;repeat<4;repeat++)instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);settle();assertEquals("选集页到顶部也不能唤出主菜单",View.GONE,((View)field(detail,"menu")).getVisibility());assertSame(retained,detail.getCurrentFocus());
+        }finally{cleanup();}
+    }
     @Test public void singleSeasonUsesNumberMatrixAndKeepsFocusedEpisodePreviewVisible()throws Exception{
         try(Fixture server=new Fixture()){
             openEpisodes(server,"series-one");assertNull(button("第 1 季"));assertTrue("分集必须显式请求版本和轨道字段",((JSONArray)field(detail,"sources")).length()>0);assertNull("选集页不再包含播放按钮",field(detail,"playButton"));screenshot("single-season-entry.png");
-            Button episode=button("第 2 集");assertNotNull(episode);onMain(episode::requestFocus);settle();
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);await(()->button("第 2 集")!=null);Button episode=button("第 2 集");assertNotNull(episode);onMain(episode::requestFocus);settle();
             assertTrue(((TextView)field(detail,"episodeTitle")).getText().toString().contains("故事 2"));assertEquals("第 2 集的合成简介",((TextView)field(detail,"episodeOverview")).getText().toString());
             Rect preview=new Rect();assertTrue(((View)field(detail,"preview")).getGlobalVisibleRect(preview));assertTrue(preview.height()>=detail.dp(140));
             assertTrue(server.imagePaths.stream().anyMatch(path->path.contains("/Items/episode-1-2/Images/Primary")));
@@ -1360,17 +1427,16 @@ public class DetailFlowTest {
     }
     @Test public void detailPlaceholderDatesKeepAllMatrixCellsAligned()throws Exception{
         try(Fixture server=new Fixture()){
-            server.placeholderDates=true;openEpisodes(server,"series-many");Button dated=button("第 4 集");assertPlaceholderLabels(detail.content);
+            server.placeholderDates=true;server.noProgress=true;openEpisodes(server,"series-many");Button dated=button("第 4 集");assertPlaceholderLabels(detail.content);
             onMain(()->dated.requestFocus());settle();onMain(()->assertUniformDatedMatrix((GridLayout)field(detail,"episodeGrid")));screenshot("detail-placeholder-dates-aligned.png");
         }finally{cleanup();}
     }
     @Test public void playerListsPlaceholderDatesButAutomaticNextSkipsThem()throws Exception{
         try(Fixture server=new Fixture(true)){
             server.placeholderDates=true;resumeEpisode(server,"episode-2-3");assertEquals("episode-2-8",((JSONObject)field(playback,"nextEpisode")).optString("Id"));
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);settle();View panel=(View)field(playback,"episodePanel");Button dated=null,unknown=null;
-            for(View view:descendants(panel))if(view instanceof Button){String text=((Button)view).getText().toString();if(text.startsWith("第 4 集"))dated=(Button)view;if(text.startsWith("第 5 集"))unknown=(Button)view;}
-            assertNotNull(dated);assertPlaceholderLabels(panel);Button focus=dated;
-            onMain(()->{focus.requestFocus();assertUniformDatedMatrix((GridLayout)focus.getParent());});settle();assertFalse(playback.isFinishing());screenshot("player-placeholder-dates-aligned.png");
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);await(()->panelCard(4)!=null);View dated=panelCard(4);
+            assertTrue(dated.getContentDescription().toString().contains("播出：今天播出"));assertTrue(panelCard(7).getContentDescription().toString().contains("播出时间待定"));
+            onMain(dated::requestFocus);settle();assertFullyVisible(dated);assertFalse(playback.isFinishing());screenshot("player-placeholder-date-cards.png");
         }finally{cleanup();}
     }
     @Test public void translationCapturesBufferedTextBeforeDisplayAndManualSelectionRestoresOriginal()throws Exception{
@@ -1573,7 +1639,10 @@ public class DetailFlowTest {
         volatile JSONObject appearance=new JSONObject();
         final java.util.concurrent.CountDownLatch playbackRequested=new java.util.concurrent.CountDownLatch(1),playbackGate=new java.util.concurrent.CountDownLatch(1);
         volatile int refreshStatusRequests;
-        volatile int matrixEpisodeCount=24;
+        volatile int matrixEpisodeCount=24,matrixResumeEpisode=3;
+        volatile boolean failEpisodePage;
+        volatile String nextSeriesId="series-one";
+        volatile java.util.concurrent.CountDownLatch episodePageRequested,episodePageGate;
         volatile String taskStatus="running";
         volatile boolean discoveryAllowed;
         volatile int discoveryChecks;
@@ -1648,7 +1717,7 @@ public class DetailFlowTest {
             if(path.contains("/Refresh/")){refreshStatusRequests++;return new JSONObject().put("RefreshRunId",123).put("status",taskStatus).put("finished",!taskStatus.equals("running"));}
             if(path.contains("/Users/Me"))return new JSONObject().put("Policy",new JSONObject().put("IsAdministrator",admin)).put("PrimaryImageTag",pauseAvatar?"pause-avatar":"");
             if(path.contains("/FavoriteItems/")||path.contains("/PlayedItems/"))return new JSONObject().put("IsFavorite",favorite).put("Played",watched);
-            if(path.contains("/Episodes")&&!path.contains("Fields=")&&nextGate!=null){nextRequested.countDown();if(!nextGate.await(15,java.util.concurrent.TimeUnit.SECONDS))throw new IOException("Synthetic next-episode gate timed out");}
+            if((path.contains("/NextEpisode")||path.contains("/Episodes")&&!path.contains("Fields="))&&nextGate!=null){nextRequested.countDown();if(!nextGate.await(15,java.util.concurrent.TimeUnit.SECONDS))throw new IOException("Synthetic next-episode gate timed out");}
             if(path.contains("/Sessions/")){reports++;JSONObject result=new JSONObject();if(danmakuFeature)result.put("Danmaku",danmakuState());if(path.endsWith("/Progress")&&danmakuReportGate!=null){danmakuReportRequested.countDown();danmakuReportGate.await(15,java.util.concurrent.TimeUnit.SECONDS);}return result;}
             if(path.contains("/PlaybackPreferences"))return new JSONObject().put("preferences",new JSONObject(personal.toString())).put("global_preferences",new JSONObject().put("audio_lang_priority",new JSONArray().put("chi").put("original").put("eng")).put("subtitle_priority",new JSONArray().put("effect").put("chs")));
             if(path.contains("/Similar"))return new JSONObject().put("Items",emptySimilar?new JSONArray():new JSONArray().put(base("movie-similar","Movie"))).put("TotalRecordCount",emptySimilar?0:1);
@@ -1656,18 +1725,20 @@ public class DetailFlowTest {
             if(path.contains("/Persons/person-1"))return new JSONObject().put("Id","person-1").put("Name","合成演员").put("Overview","合成人物简介");
             if(path.contains("/PlaybackInfo")){JSONArray original=sources(!path.contains("movie-single")),reversed=new JSONArray();for(int i=original.length()-1;i>=0;i--)reversed.put(original.get(i));JSONObject result=new JSONObject().put("MediaSources",reversed).put("PlaySessionId","synthetic-play");if(danmakuFeature)result.put("Danmaku",danmakuState());return result;}
             if(path.contains("/Seasons")){JSONArray seasons=new JSONArray().put(new JSONObject().put("Id","season-1").put("Name","第 1 季"));if(path.contains("series-many"))seasons.put(new JSONObject().put("Id","season-2").put("Name","第 2 季"));return new JSONObject().put("Items",seasons);}
+            if(path.contains("/NextEpisode")){String current=path.substring(path.indexOf("/Items/")+7,path.indexOf("/NextEpisode"));List<JSONObject> rows=EtknApi.rows(response("/api/tv/Shows/"+nextSeriesId+"/Episodes?Fields=MediaSources,MediaStreams,Overview"));JSONObject next=PlaybackSelection.nextEpisode(rows,current);return new JSONObject().put("Items",next==null?new JSONArray():new JSONArray().put(next));}
             if(path.contains("/PlaybackTarget")||path.contains("/EpisodePage")){
                 android.net.Uri uri=android.net.Uri.parse("http://fixture"+path);String season=uri.getQueryParameter("SeasonId");
                 List<JSONObject> episodes=EtknApi.rows(response(path.substring(0,path.lastIndexOf('/'))+"/Episodes?Fields=MediaSources,MediaStreams,Overview"));
                 if(season!=null&&!season.isEmpty())episodes.removeIf(ep->!season.equals(ep.optString("SeasonId")));
                 if(path.contains("/PlaybackTarget")){JSONObject target=DetailPresentation.recommended(episodes);return new JSONObject().put("Items",target==null?new JSONArray():new JSONArray().put(target));}
                 int start=uri.getQueryParameter("StartIndex")==null?0:Integer.parseInt(uri.getQueryParameter("StartIndex"));int limit=uri.getQueryParameter("Limit")==null?40:Integer.parseInt(uri.getQueryParameter("Limit"));
-                String anchor=uri.getQueryParameter("AnchorId");if(anchor!=null)for(int i=0;i<episodes.size();i++)if(anchor.equals(episodes.get(i).optString("Id"))){start=i/limit*limit;break;}
+                String anchor=uri.getQueryParameter("AnchorId");if(anchor!=null)for(int i=0;i<episodes.size();i++)if(anchor.equals(episodes.get(i).optString("Id"))){start=i;break;}
+                if(episodePageGate!=null){episodePageRequested.countDown();if(!episodePageGate.await(15,java.util.concurrent.TimeUnit.SECONDS))throw new IOException("Synthetic episode page gate timed out");}
                 JSONArray page=new JSONArray();for(int i=start;i<Math.min(start+limit,episodes.size());i++)page.put(episodes.get(i));
                 return new JSONObject().put("Items",page).put("StartIndex",start).put("NextStartIndex",start+page.length()).put("TotalRecordCount",episodes.size());
             }
-            if(path.contains("/Episodes")){JSONArray episodes=new JSONArray();int seasons=path.contains("series-many")?2:1;for(int s=1;s<=seasons;s++)for(int e=1;e<=(s==1?matrixEpisodeCount:12);e++)episodes.put(new JSONObject().put("Id","episode-"+s+"-"+e).put("Type","Episode").put("Name","故事 "+e).put("SeriesName","合成剧集").put("SeriesId",seasons==2?"series-many":"series-one").put("SeasonId","season-"+s).put("ParentIndexNumber",s).put("IndexNumber",e).put("RunTimeTicks",100000000).put("Overview","第 "+e+" 集的合成简介").put("ParentBackdropItemId","series-parent").put("MediaSources",sources(false)).put("UserData",new JSONObject().put("PlaybackPositionTicks",playbackTicks("episode-"+s+"-"+e,!noProgress&&s==seasons&&e==3?30000000:0)).put("Played",e==1)));if(placeholderDates)for(int i=0;i<episodes.length();i++){JSONObject ep=episodes.getJSONObject(i);int n=ep.optInt("IndexNumber");if(n>=4&&n<=7){ep.put("IsMissing",true).put("LocationType","Virtual");if(n<=6)ep.put("PremiereDate",placeholderDate(n-4)+"T00:00:00Z");}}if(!path.contains("Fields=MediaSources,MediaStreams,Overview"))for(int i=0;i<episodes.length();i++)episodes.getJSONObject(i).remove("MediaSources");return new JSONObject().put("Items",episodes);}
-            String id=path.substring(path.lastIndexOf('/')+1).split("\\?")[0];boolean series=id.startsWith("series");JSONObject item=base(id,series?"Series":id.startsWith("episode-")?"Episode":"Movie");if(taglineFixture)item.put("Tagline","合成作品的标语");if(browseFeatures){item.put(series?"Networks":"Companies",new JSONArray().put(series?"中文平台":"中文公司"));if(studioIcons)item.put("StudioImageTags",new JSONObject().put(series?"Networks":"Companies",new JSONObject().put(series?"中文平台":"中文公司","studio-icon")));}if(liveArtwork&&changed)item.put("Name","服务器更新后的片名").put("Overview","服务器已更新的简介").put("TMDbRating",8.2).put("DoubanRating",9.1).put("IMDbRating",8.6).put("CustomRating","自定义 16+");if(id.equals("movie-no-overview"))item.put("Overview","");if(id.startsWith("episode-"))item.put("SeriesId","series-one");if(!series)item.put("MediaSources",sources(!id.equals("movie-single")&&!id.startsWith("episode-")));if(id.equals("movie-chapters")||id.equals("movie-no-overview"))item.put("Chapters",new JSONArray().put(new JSONObject().put("Name","开场").put("ChapterIndex",0).put("StartPositionTicks",0).put("ImageTag","chapter-0").put("ImagePath","/api/tv/Items/movie-chapters/Images/Chapter/0")).put(new JSONObject().put("Name","转折").put("ChapterIndex",1).put("StartPositionTicks",600000000).put("ImageTag","chapter-1").put("ImagePath","/api/tv/Items/movie-chapters/Images/Chapter/1")));return item;
+            if(path.contains("/Episodes")){JSONArray episodes=new JSONArray();int seasons=path.contains("series-many")?2:1;for(int s=1;s<=seasons;s++)for(int e=1;e<=(s==1?matrixEpisodeCount:12);e++)episodes.put(new JSONObject().put("Id","episode-"+s+"-"+e).put("Type","Episode").put("Name","故事 "+e).put("SeriesName","合成剧集").put("SeriesId",seasons==2?"series-many":"series-one").put("SeasonId","season-"+s).put("ParentIndexNumber",s).put("IndexNumber",e).put("RunTimeTicks",100000000).put("Overview","第 "+e+" 集的合成简介").put("ParentBackdropItemId","series-parent").put("MediaSources",sources(false)).put("UserData",new JSONObject().put("PlaybackPositionTicks",playbackTicks("episode-"+s+"-"+e,!noProgress&&s==seasons&&e==matrixResumeEpisode?30000000:0)).put("Played",e==1||(matrixResumeEpisode>3&&e<matrixResumeEpisode))));if(placeholderDates)for(int i=0;i<episodes.length();i++){JSONObject ep=episodes.getJSONObject(i);int n=ep.optInt("IndexNumber");if(n>=4&&n<=7){ep.put("IsMissing",true).put("LocationType","Virtual");if(n<=6)ep.put("PremiereDate",placeholderDate(n-4)+"T00:00:00Z");}}if(!path.contains("Fields=MediaSources,MediaStreams,Overview"))for(int i=0;i<episodes.length();i++)episodes.getJSONObject(i).remove("MediaSources");return new JSONObject().put("Items",episodes);}
+            String id=path.substring(path.lastIndexOf('/')+1).split("\\?")[0];boolean series=id.startsWith("series");JSONObject item=base(id,series?"Series":id.startsWith("episode-")?"Episode":"Movie");if(taglineFixture)item.put("Tagline","合成作品的标语");if(browseFeatures){item.put(series?"Networks":"Companies",new JSONArray().put(series?"中文平台":"中文公司"));if(studioIcons)item.put("StudioImageTags",new JSONObject().put(series?"Networks":"Companies",new JSONObject().put(series?"中文平台":"中文公司","studio-icon")));}if(liveArtwork&&changed)item.put("Name","服务器更新后的片名").put("Overview","服务器已更新的简介").put("TMDbRating",8.2).put("DoubanRating",9.1).put("IMDbRating",8.6).put("CustomRating","自定义 16+");if(id.equals("movie-no-overview"))item.put("Overview","");if(id.startsWith("episode-")){String[] coordinates=id.split("-");item.put("SeriesId",nextSeriesId).put("SeasonId","season-"+coordinates[1]).put("ParentIndexNumber",Integer.parseInt(coordinates[1])).put("IndexNumber",Integer.parseInt(coordinates[2]));}if(!series)item.put("MediaSources",sources(!id.equals("movie-single")&&!id.startsWith("episode-")));if(id.equals("movie-chapters")||id.equals("movie-no-overview"))item.put("Chapters",new JSONArray().put(new JSONObject().put("Name","开场").put("ChapterIndex",0).put("StartPositionTicks",0).put("ImageTag","chapter-0").put("ImagePath","/api/tv/Items/movie-chapters/Images/Chapter/0")).put(new JSONObject().put("Name","转折").put("ChapterIndex",1).put("StartPositionTicks",600000000).put("ImageTag","chapter-1").put("ImagePath","/api/tv/Items/movie-chapters/Images/Chapter/1")));return item;
         }
         void serve(Socket client)throws Exception{
             try(client){BufferedReader reader=new BufferedReader(new InputStreamReader(client.getInputStream(),StandardCharsets.UTF_8));String line=reader.readLine();if(line==null)return;String path=line.split(" ")[1];boolean post=line.startsWith("POST ");int range=0,length=0;while((line=reader.readLine())!=null&&!line.isEmpty()){if(line.toLowerCase(Locale.ROOT).startsWith("range: bytes="))range=Integer.parseInt(line.substring(13).split("-")[0]);if(line.toLowerCase(Locale.ROOT).startsWith("content-length:"))length=Integer.parseInt(line.substring(15).trim());}
@@ -1689,7 +1760,7 @@ public class DetailFlowTest {
                 byte[] body=video?media:subtitle?(pgsSubtitle?PlaybackCompatibilityTest.supSample():"WEBVTT\n\n00:00:00.000 --> 00:00:20.000\nExternal synthetic subtitle\n".getBytes(StandardCharsets.UTF_8)):picture?(path.contains("tag=art2")?updatedImage:image):response(path).toString().getBytes(StandardCharsets.UTF_8);
                 if(holdMetadata&&!post&&!picture&&path.contains("/Users/")&&path.contains("/Items/")){metadataRequested.countDown();metadataGate.await(15,java.util.concurrent.TimeUnit.SECONDS);}
                 if(holdIdentity&&path.contains("/Items/movie-single/Images/")){if(path.contains("/Backdrop")){backgroundRequested.countDown();backdropGate.await(15,java.util.concurrent.TimeUnit.SECONDS);}if(path.contains("/Logo"))logoRequested.countDown();}
-                boolean partial=range>0||discMedia&&video;String code=(danmakuFailure&&path.contains("/Danmaku?")||playbackInfoFailure&&path.contains("/PlaybackInfo")||failNext&&path.contains("/Episodes")&&!path.contains("Fields="))?"500 Internal Server Error":missing?"404 Not Found":partial?"206 Partial Content":"200 OK";int start=video?range:0;
+                boolean partial=range>0||discMedia&&video;String code=(danmakuFailure&&path.contains("/Danmaku?")||playbackInfoFailure&&path.contains("/PlaybackInfo")||failNext&&(path.contains("/NextEpisode")||path.contains("/Episodes")&&!path.contains("Fields="))||failEpisodePage&&path.contains("/EpisodePage"))?"500 Internal Server Error":missing?"404 Not Found":partial?"206 Partial Content":"200 OK";int start=video?range:0;
                 String headers="HTTP/1.1 "+code+"\r\nContent-Type: "+(video?"video/x-matroska":subtitle?"text/vtt":picture?"image/jpeg":"application/json")+"\r\nContent-Length: "+(body.length-start)+"\r\n"+(partial?"Content-Range: bytes "+start+"-"+(body.length-1)+"/"+body.length+"\r\n":"")+"Connection: close\r\n\r\n";
                 OutputStream output=client.getOutputStream();output.write(headers.getBytes(StandardCharsets.US_ASCII));output.write(body,start,body.length-start);
             }

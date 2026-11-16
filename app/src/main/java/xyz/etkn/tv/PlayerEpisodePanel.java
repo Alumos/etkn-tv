@@ -1,7 +1,9 @@
 package xyz.etkn.tv;
 
-import android.graphics.Color;
 import android.graphics.drawable.LayerDrawable;
+import android.text.TextUtils;
+import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.widget.*;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -9,57 +11,120 @@ import org.json.JSONObject;
 import java.util.*;
 import java.util.function.Consumer;
 
-/** 播放中的选集沿用详情页数字矩阵、已看勾选与绿色进度填充。 */
+/** 播放中的右侧分集卡片：按页取元数据，只加载可见剧照。 */
 final class PlayerEpisodePanel extends LinearLayout {
     private final TvActivity host;
-    private final String currentId;
+    private final String currentId,seriesId;
     private final Consumer<JSONObject> select;
-    private final Runnable retry;
-    private final TextView heading,description;
-    private final LinearLayout body;
-    private List<JSONObject> episodes=Collections.emptyList();
-    private Button currentCell;
+    private final TextView heading,notice;
+    private final LinearLayout body,cards,scrollBody;
+    private final ScrollView viewport;
+    private final FrameLayout viewportFrame;
+    private final Button retry;
+    private final List<JSONObject> episodes=new ArrayList<>();
+    private final Map<String,View> cells=new LinkedHashMap<>();
+    private List<JSONObject> seasons=Collections.emptyList();
+    private String seasonId="";
+    private int start,next,total,ticket;
+    private boolean initialized,loading;
+    private Runnable retryPage;
+    private View currentCell;
     private JSONObject currentEpisode;
 
-    PlayerEpisodePanel(TvActivity host,String currentId,Consumer<JSONObject> select,Runnable retry){
-        super(host);this.host=host;this.currentId=currentId;this.select=select;this.retry=retry;
-        setOrientation(VERTICAL);setPadding(host.dp(24),host.dp(20),host.dp(24),host.dp(20));setBackground(host.shape(TvActivity.PANEL,0));setFocusable(true);setFocusableInTouchMode(true);
-        heading=host.text("选集",23,TvActivity.TEXT);addView(heading);
-        description=host.text("",14,TvActivity.MUTED);description.setMaxLines(2);addView(description,new LayoutParams(-1,host.dp(56)));
+    PlayerEpisodePanel(TvActivity host,String currentId,String seriesId,Consumer<JSONObject> select){
+        super(host);this.host=host;this.currentId=currentId;this.seriesId=seriesId;this.select=select;
+        setOrientation(VERTICAL);setPadding(host.dp(18),host.dp(20),host.dp(18),host.dp(20));setBackground(host.shape(TvActivity.PANEL,0));setFocusable(true);setFocusableInTouchMode(true);
+        heading=host.text("分集列表",21,TvActivity.TEXT);addView(heading);
         body=host.column();addView(body,new LayoutParams(-1,0,1));
+        viewport=new FocusScroll.Vertical(host);viewport.setClipChildren(true);viewport.setClipToPadding(true);
+        viewportFrame=new FrameLayout(host){@Override protected void onSizeChanged(int width,int height,int oldWidth,int oldHeight){super.onSizeChanged(width,height,oldWidth,oldHeight);setClipBounds(new android.graphics.Rect(0,0,width,height));}};viewportFrame.addView(viewport,new FrameLayout.LayoutParams(-1,-1));
+        scrollBody=host.column();viewport.addView(scrollBody);cards=host.column();cards.setPadding(host.dp(6),host.dp(12),host.dp(6),host.dp(12));scrollBody.addView(cards);
+        viewport.setOnScrollChangeListener((view,x,y,oldX,oldY)->{if(isShown()&&initialized&&!loading&&retryPage==null&&next<total&&y+view.getHeight()>=scrollBody.getHeight()-host.dp(280))loadPage(next,false,false);});
+        notice=host.text("",13,TvActivity.MUTED);addView(notice);
+        retry=host.button("重试",()->{if(retryPage!=null)retryPage.run();});retry.setBackground(host.selectionBackground());retry.setVisibility(GONE);addView(retry);
     }
     boolean contains(View view){while(view!=null){if(view==this)return true;view=view.getParent() instanceof View?(View)view.getParent():null;}return false;}
-    void loading(){body.removeAllViews();body.addView(host.text("正在读取分集…",15,TvActivity.MUTED));requestFocus();}
-    void failed(){body.removeAllViews();body.addView(host.text("分集加载失败，当前播放不受影响",15,TvActivity.MUTED));Button again=host.button("重试",retry);again.setBackground(host.selectionBackground());body.addView(again);again.requestFocus();}
-    void showEpisodes(List<JSONObject> rows){
-        episodes=rows;body.removeAllViews();currentCell=null;currentEpisode=null;
-        if(rows.isEmpty()){body.addView(host.text("暂无可播放分集",15,TvActivity.MUTED));requestFocus();return;}
-        LinkedHashSet<Integer> seasons=new LinkedHashSet<>();JSONObject selected=rows.get(0);
-        for(JSONObject episode:rows){seasons.add(episode.optInt("ParentIndexNumber"));if(currentId.equals(episode.optString("Id")))selected=episode;}
-        LinearLayout matrix=host.column();
-        if(seasons.size()>1){LinearLayout seasonRow=host.row();HorizontalScrollView scroll=new FocusScroll.Row(host);scroll.setHorizontalScrollBarEnabled(false);scroll.setClipToPadding(false);scroll.addView(seasonRow);body.addView(scroll);
-            for(int season:seasons){JSONObject episode=rows.stream().filter(ep->ep.optInt("ParentIndexNumber")==season).findFirst().get();String name=season==0?"特别篇":"第 "+season+" 季";if(episode.optString("SeasonId").isEmpty())seasonRow.addView(host.button(name,()->showSeason(matrix,season,null)));else{JSONObject poster=new JSONObject();try{poster.put("Id",episode.optString("SeasonId")).put("Name",name).put("Type","Season");}catch(org.json.JSONException error){throw new IllegalStateException(error);}seasonRow.addView(host.seasonCard(poster,()->showSeason(matrix,season,null)));}}
-        }
-        body.addView(matrix,new LayoutParams(-1,0,1));showSeason(matrix,selected.optInt("ParentIndexNumber"),selected);
+    void open(){
+        if(loading)return;
+        if(initialized){focus(currentCell==null?cards.getChildAt(0):currentCell);return;}
+        if(isShown())requestFocus();
+        loading=true;notice.setText("正在读取分集…");retry.setVisibility(GONE);retryPage=null;int request=++ticket;
+        host.async(()->{
+            try{
+                JSONObject data=new JSONObject().put("seasons",host.api.get("/api/tv/Shows/"+EtknApi.encode(seriesId)+"/Seasons?UserId="+EtknApi.encode(host.api.session.userId())));
+                JSONObject current=host.api.get(host.api.userPath()+"/Items/"+EtknApi.encode(currentId));String season=current.optString("SeasonId");
+                return data.put("page",fetch(season,currentId,0,40)).put("season",season);
+            }catch(EtknApi.AuthException error){throw error;}catch(Exception error){return null;}
+        },data->{
+            if(request!=ticket)return;loading=false;
+            if(data==null){failed(this::open);return;}
+            initialized=true;seasons=EtknApi.rows(data.optJSONObject("seasons"));seasonId=data.optString("season");
+            body.removeAllViews();scrollBody.removeAllViews();
+            if(seasons.size()>1){LinearLayout choices=host.row();HorizontalScrollView rail=new FocusScroll.Row(host);rail.setHorizontalScrollBarEnabled(false);rail.addView(choices);scrollBody.addView(rail);
+                for(JSONObject season:seasons)choices.addView(host.seasonCard(season,()->chooseSeason(season.optString("Id"))));
+            }
+            scrollBody.addView(cards);body.addView(viewportFrame,new LayoutParams(-1,0,1));applyPage(data.optJSONObject("page"),false,true,currentId);
+        });
     }
-    private void showSeason(LinearLayout matrix,int season,JSONObject preferred){
-        matrix.removeAllViews();currentCell=null;currentEpisode=null;
-        List<JSONObject> rows=new ArrayList<>();for(JSONObject ep:episodes)if(ep.optInt("ParentIndexNumber")==season)rows.add(ep);
-        if(rows.isEmpty())return;JSONObject entry=preferred==null?DetailPresentation.recommended(rows):preferred;
-        heading.setText("选集 · "+(season==0?"特别篇":"第 "+season+" 季"));
-        GridLayout grid=new GridLayout(host);int available=Math.min(480,host.getResources().getConfiguration().screenWidthDp*3/5)-48,columns=Math.max(3,available/112);grid.setColumnCount(columns);
-        ScrollView scroll=new FocusScroll.Vertical(host);scroll.addView(grid);matrix.addView(scroll,new LayoutParams(-1,-1));Button focus=null;
-        for(JSONObject ep:rows){boolean dates=DetailPresentation.episodeRowHasDates(rows,grid.getChildCount(),columns);boolean current=currentId.equals(ep.optString("Id"));Button cell=host.button("",()->select.accept(ep));cell.setSingleLine(!dates);cell.setMaxLines(dates?2:1);cell.setPadding(host.dp(6),0,host.dp(6),0);host.themeText(cell,current?TvActivity.ACCENT:TvActivity.TEXT);
-            JSONObject data=ep.optJSONObject("UserData");boolean watched=data!=null&&data.optBoolean("Played");int progress=progress(watched,DetailPresentation.position(ep),ep.optLong("RunTimeTicks"));
-            cell.setText(host.episodeLabel(ep,(watched?" ✓":"")+(current?" ▶":""),dates));cell.setBackground(host.episodeBackground(progress));describe(cell,ep,watched,progress,current);
-            cell.setOnFocusChangeListener((view,focused)->{if(focused)description.setText((current?"正在播放 · ":"")+DetailPresentation.episodeNumber(ep)+" · "+EtknApi.title(ep)+(DetailPresentation.placeholder(ep)?"\n播出："+DetailPresentation.airDate(ep):""));});
-            GridLayout.LayoutParams bounds=new GridLayout.LayoutParams();bounds.width=(host.dp(available)-host.dp(10)*(columns-1))/columns;bounds.height=host.dp(dates?68:44);bounds.setMargins(0,host.dp(7),grid.getChildCount()%columns==columns-1?0:host.dp(10),host.dp(7));grid.addView(cell,bounds);
-            if(current){currentCell=cell;currentEpisode=ep;}if(ep==entry)focus=cell;
+    private JSONObject fetch(String season,String anchor,int offset,int limit)throws Exception{
+        String path="/api/tv/Shows/"+EtknApi.encode(seriesId)+"/EpisodePage?UserId="+EtknApi.encode(host.api.session.userId())+"&Limit="+limit;
+        if(!season.isEmpty())path+="&SeasonId="+EtknApi.encode(season);
+        if(!anchor.isEmpty())path+="&AnchorId="+EtknApi.encode(anchor);else path+="&StartIndex="+offset;
+        return host.api.get(path);
+    }
+    private void chooseSeason(String id){seasonId=id;loadPage(0,false,true);}
+    private void failed(Runnable action){retryPage=action;notice.setText("分集加载失败，当前播放不受影响");retry.setVisibility(VISIBLE);if(isShown()&&cards.getChildCount()==0)retry.requestFocus();}
+    private void loadPage(int offset,boolean previous,boolean reset){
+        if(loading&&!reset)return;loading=true;retryPage=null;retry.setVisibility(GONE);notice.setText(previous?"正在读取前面的分集…":"正在读取分集…");
+        int request=++ticket,limit=previous?Math.min(40,start):40;String season=seasonId,restore=focusedId();
+        if(reset){episodes.clear();cells.clear();cards.removeAllViews();currentCell=null;currentEpisode=null;}
+        host.async(()->{try{return fetch(season,"",offset,limit);}catch(EtknApi.AuthException error){throw error;}catch(Exception error){return null;}},page->{
+            if(request!=ticket)return;loading=false;
+            if(page==null){failed(()->loadPage(offset,previous,reset));return;}
+            String retained=focusedId();applyPage(page,previous,reset,retained.isEmpty()?restore:retained);
+        });
+    }
+    private String focusedId(){for(Map.Entry<String,View> entry:cells.entrySet())if(entry.getValue().hasFocus())return entry.getKey();return "";}
+    private void applyPage(JSONObject page,boolean previous,boolean reset,String restore){
+        List<JSONObject> rows=EtknApi.rows(page);
+        if(reset){episodes.clear();start=page.optInt("StartIndex");next=page.optInt("NextStartIndex",start+rows.size());}
+        else if(previous)start=page.optInt("StartIndex");
+        else next=page.optInt("NextStartIndex",next+rows.size());
+        total=page.optInt("TotalRecordCount",next);if(previous)episodes.addAll(0,rows);else episodes.addAll(rows);
+        if(seasonId.isEmpty()&&!episodes.isEmpty())seasonId=episodes.get(0).optString("SeasonId");
+        heading.setText("分集列表 · "+total+" 集");notice.setText(episodes.isEmpty()?"暂无分集":start>0?"上键加载前面的分集":"");
+        if(reset||previous){cards.removeAllViews();cells.clear();currentCell=null;currentEpisode=null;appendCards(episodes);View target=cells.get(restore);focus(target==null?cards.getChildAt(0):target);}
+        else appendCards(rows);
+    }
+    private void focus(View target){if(target!=null)target.post(()->{if(isShown()&&target.isAttachedToWindow())target.requestFocus();});}
+    private void appendCards(List<JSONObject> rows){
+        int width=Math.min(360,host.getResources().getConfiguration().screenWidthDp*3/5)-60;
+        for(JSONObject episode:rows){
+            boolean current=currentId.equals(episode.optString("Id"));JSONObject data=episode.optJSONObject("UserData");boolean watched=data!=null&&data.optBoolean("Played");
+            int progress=progress(watched,DetailPresentation.position(episode),episode.optLong("RunTimeTicks"));
+            LinearLayout card=new LinearLayout(host);card.setOrientation(VERTICAL);card.setPadding(host.dp(6),host.dp(6),host.dp(6),host.dp(8));card.setFocusable(true);card.setClickable(true);card.setBackground(host.episodeBackground(progress));
+            card.setOnClickListener(view->select.accept(episode));describe(card,episode,watched,progress,current);
+            LayoutParams bounds=new LayoutParams(-1,-2);bounds.bottomMargin=host.dp(14);cards.addView(card,bounds);cells.put(episode.optString("Id"),card);
+            FrameLayout art=new FrameLayout(host);card.addView(art,new LayoutParams(-1,host.dp(width*9/16)));
+            ImageView image=new ImageView(host);image.setScaleType(ImageView.ScaleType.CENTER_CROP);Images.rounded(image,host.dp(8));image.setForeground(Images.border(host.dp(8)));art.addView(image,new FrameLayout.LayoutParams(-1,-1));
+            TextView missing=host.text("暂无剧照",13,TvActivity.MUTED);missing.setGravity(Gravity.CENTER);art.addView(missing,new FrameLayout.LayoutParams(-1,-1));
+            Images.visibleArtwork(host.api,size->host.api.artwork(episode,"Primary",size),image,ok->missing.setVisibility(ok?GONE:VISIBLE));
+            if(watched||current||DetailPresentation.placeholder(episode)){TextView badge=host.text(current?"正在播放":watched?"✓ 已观看":episode.optBoolean("IsUnaired")?"未播出":"未入库",12,current||watched?TvActivity.ACCENT:TvActivity.TEXT);badge.setBackground(host.shape(TvActivity.PANEL,0));badge.setPadding(host.dp(6),host.dp(3),host.dp(6),host.dp(3));FrameLayout.LayoutParams mark=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.END);mark.setMargins(host.dp(4),host.dp(4),host.dp(4),0);art.addView(badge,mark);}
+            TextView title=host.text(DetailPresentation.episodeNumber(episode)+" · "+EtknApi.title(episode),16,current?TvActivity.ACCENT:TvActivity.TEXT);title.setMaxLines(1);title.setEllipsize(TextUtils.TruncateAt.END);title.setPadding(host.dp(3),host.dp(7),host.dp(3),host.dp(3));card.addView(title);
+            if(DetailPresentation.placeholder(episode)){TextView date=host.text("播出："+DetailPresentation.airDate(episode),12,TvActivity.MUTED);card.addView(date);}
+            TextView overview=host.text(episode.optString("Overview").isEmpty()?"暂无分集简介":episode.optString("Overview"),13,TvActivity.MUTED);overview.setMaxLines(3);overview.setEllipsize(TextUtils.TruncateAt.END);overview.setPadding(host.dp(3),0,host.dp(3),0);card.addView(overview);
+            if(current){currentCell=card;currentEpisode=episode;}
         }
-        if(focus!=null)focus.requestFocus();
+    }
+    boolean navigate(KeyEvent event){
+        if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;int key=event.getKeyCode(),index=cards.indexOfChild(host.getCurrentFocus());
+        if(index<0)return false;
+        if(key==KeyEvent.KEYCODE_DPAD_UP){if(index>0)cards.getChildAt(index-1).requestFocus(View.FOCUS_UP);else if(start>0){if(!loading)loadPage(Math.max(0,start-40),true,false);}else return seasons.size()<=1;return true;}
+        if(key==KeyEvent.KEYCODE_DPAD_DOWN){if(index+1<cards.getChildCount())cards.getChildAt(index+1).requestFocus(View.FOCUS_DOWN);else if(next<total&&!loading)loadPage(next,false,false);return true;}
+        return false;
     }
     private int progress(boolean watched,long position,long runtime){return watched?10000:runtime>0?(int)Math.min(9999,10000.0*Math.max(0,position)/runtime):0;}
-    private void describe(Button cell,JSONObject ep,boolean watched,int progress,boolean current){cell.setContentDescription(DetailPresentation.episodeNumber(ep)+"，"+EtknApi.title(ep)+(current?"，正在播放":"")+(watched?"，已观看":progress>0?"，续播进度 "+progress/100+"%":"")+(DetailPresentation.placeholder(ep)?"，播出："+DetailPresentation.airDate(ep):""));}
+    private void describe(View cell,JSONObject ep,boolean watched,int progress,boolean current){cell.setContentDescription(DetailPresentation.episodeNumber(ep)+"，"+EtknApi.title(ep)+(current?"，正在播放":"")+(watched?"，已观看":progress>0?"，续播进度 "+progress/100+"%":"")+(DetailPresentation.placeholder(ep)?"，播出："+DetailPresentation.airDate(ep):""));}
     void updateCurrent(ExoPlayer player){
         if(currentCell==null||currentEpisode==null||player==null)return;JSONObject data=currentEpisode.optJSONObject("UserData");boolean watched=data!=null&&data.optBoolean("Played");
         long runtime=player.getDuration()>0?player.getDuration()*10000:currentEpisode.optLong("RunTimeTicks");int progress=progress(watched,player.getCurrentPosition()*10000,runtime);

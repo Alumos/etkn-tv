@@ -52,7 +52,6 @@ public final class PlayerActivity extends TvActivity {
     private String danmakuNotice="";
     private AlertDialog speedDialog,danmakuDialog;
     private PlayerEpisodePanel episodePanel;
-    private List<JSONObject> episodes=new ArrayList<>();
     private boolean episodesLoading,episodesFailed;
     private float playbackSpeed=1f;
     private AlertDialog trackDialog;
@@ -157,8 +156,8 @@ public final class PlayerActivity extends TvActivity {
         status=text("",15,android.graphics.Color.WHITE);TvNotice.style(status,this);status.setVisibility(View.GONE);FrameLayout.LayoutParams statusLayout=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL);statusLayout.topMargin=dp(48);stage.addView(status,statusLayout);
         playbackLoading=new ProgressBar(this,null,android.R.attr.progressBarStyleLarge);playbackLoading.setIndeterminate(true);playbackLoading.setContentDescription("正在读取播放信息");playbackLoading.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(resolveColor(ACCENT)));stage.addView(playbackLoading,new FrameLayout.LayoutParams(dp(64),dp(64),Gravity.CENTER));
         skipNotice=status;
-        episodePanel=new PlayerEpisodePanel(this,itemId,this::playEpisode,this::loadNextEpisode);
-        episodePanel.setVisibility(View.GONE);stage.addView(episodePanel,new FrameLayout.LayoutParams(dp(Math.min(480,getResources().getConfiguration().screenWidthDp*3/5)),-1,Gravity.END));
+        episodePanel=new PlayerEpisodePanel(this,itemId,getIntent().getStringExtra("seriesId"),this::playEpisode);
+        episodePanel.setVisibility(View.GONE);stage.addView(episodePanel,new FrameLayout.LayoutParams(dp(Math.min(360,getResources().getConfiguration().screenWidthDp*3/5)),-1,Gravity.END));
         setContentView(stage);video.hideController();video.requestFocus();
         if(queueMode&&!getIntent().getBooleanExtra("resolved",false)){showLoading();resolveQueueUnit(itemId,true);return;}
         String requestedSource=state==null?getIntent().getStringExtra("sourceId"):state.getString("sourceId",getIntent().getStringExtra("sourceId"));
@@ -221,22 +220,17 @@ public final class PlayerActivity extends TvActivity {
         String series=getIntent().getStringExtra("seriesId");
         if(series==null||series.isEmpty()){nextLoaded=true;updateNextButton();return;}
         if(episodesLoading)return;episodesLoading=true;episodesFailed=false;
-        if(episodePanel.isShown())episodePanel.loading();
         async(()->{
-            try{return EtknApi.rows(api.get("/api/tv/Shows/"+EtknApi.encode(series)+"/Episodes?UserId="+EtknApi.encode(api.session.userId())));}
+            try{return EtknApi.rows(api.get("/api/tv/Items/"+EtknApi.encode(itemId)+"/NextEpisode?UserId="+EtknApi.encode(api.session.userId())));}
             catch(EtknApi.AuthException error){throw error;}
             catch(Exception ignored){return null;}
         },rows->{
-            episodesLoading=false;episodesFailed=rows==null;episodes=rows==null?new ArrayList<>():new ArrayList<>(rows);
-            episodes.removeIf(ep->!"Episode".equals(ep.optString("Type"))||ep.optString("Id").isEmpty()||ep.optInt("ParentIndexNumber",-1)<0||ep.optInt("IndexNumber",-1)<0);
-            episodes.sort(Comparator.comparingInt((JSONObject ep)->ep.optInt("ParentIndexNumber")).thenComparingInt(ep->ep.optInt("IndexNumber")));
-            nextEpisode=PlaybackSelection.nextEpisode(episodes,itemId);nextLoaded=true;updateNextButton();
-            if(episodePanel.isShown())renderEpisodes();
+            episodesLoading=false;episodesFailed=rows==null;nextEpisode=rows==null||rows.isEmpty()?null:rows.get(0);nextLoaded=true;updateNextButton();
             if(hasNext()&&focusNextWhenLoaded&&controls.getVisibility()==View.VISIBLE)nextButton.requestFocus();focusNextWhenLoaded=false;
             if(pendingAdvance){pendingAdvance=false;advanceQueue();}
         });
     }
-    private void renderEpisodes(){if(episodesLoading)episodePanel.loading();else if(episodesFailed)episodePanel.failed();else{episodePanel.showEpisodes(episodes);episodePanel.updateCurrent(player);}}
+    private void renderEpisodes(){episodePanel.open();episodePanel.updateCurrent(player);}
     private void showEpisodes(){
         String series=getIntent().getStringExtra("seriesId");if(series==null||series.isEmpty()){TvNotice.show(this,"当前视频没有分集",Toast.LENGTH_SHORT);return;}
         hideSeekProgress();episodePanel.setVisibility(View.VISIBLE);video.hideController();controls.setVisibility(View.GONE);skipButton.setVisibility(View.GONE);updatePlaybackOverlay();renderEpisodes();
@@ -716,6 +710,7 @@ public final class PlayerActivity extends TvActivity {
         if(key==KeyEvent.KEYCODE_BACK){cancelConfirm();if(down&&event.getRepeatCount()==0){if(episodePanel.isShown())hideEpisodes();else if(creditsCountdownStartedAt>=0){creditsSkipCancelled=true;cancelCreditsCountdown();}else if(seekKeys||controls.getVisibility()==View.VISIBLE||video.isControllerFullyVisible()){hideSeekProgress();video.hideController();controls.setVisibility(View.GONE);video.requestFocus();}else finish();}return true;}
         if(down)focusNextWhenLoaded=false;
         if(episodePanel.isShown()){
+            if(episodePanel.navigate(event))return true;
             if(key==KeyEvent.KEYCODE_MENU||key==KeyEvent.KEYCODE_MEDIA_FAST_FORWARD||key==KeyEvent.KEYCODE_MEDIA_REWIND)return true;
             if(key>=KeyEvent.KEYCODE_DPAD_UP&&key<=KeyEvent.KEYCODE_DPAD_RIGHT){View focus=getCurrentFocus();int direction=key==KeyEvent.KEYCODE_DPAD_UP?View.FOCUS_UP:key==KeyEvent.KEYCODE_DPAD_DOWN?View.FOCUS_DOWN:key==KeyEvent.KEYCODE_DPAD_LEFT?View.FOCUS_LEFT:View.FOCUS_RIGHT;if(focus==null||!episodePanel.contains(focus.focusSearch(direction)))return true;}
             return super.dispatchKeyEvent(event);
