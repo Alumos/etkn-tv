@@ -99,16 +99,16 @@ public class DetailFlowTest {
             screenshot("detail-partial-ratings.png");
         }finally{cleanup();}
     }
-    @Test public void webDetailClampsOverviewToSixLinesAndRetainsTrackNavigation()throws Exception{
+    @Test public void webDetailClampsOverviewToThreeFullWidthLinesAndRetainsTrackNavigation()throws Exception{
         try(Fixture server=new Fixture()){
             server.longOverview=true;open(server,"movie-multi");
             TextView overview=(TextView)field(detail,"detailOverview");Button more=(Button)field(detail,"overviewMore");
-            await(()->more.isShown()&&more.getWidth()>0);assertEquals(6,overview.getLineCount());assertFalse(overview.isFocusable());
+            await(()->more.isShown()&&more.getWidth()>0);assertEquals(3,overview.getLineCount());assertEquals(detail.content.getWidth()-detail.content.getPaddingLeft()-detail.content.getPaddingRight(),overview.getWidth());assertFalse(overview.isFocusable());
             View copy=(View)field(detail,"detailCopy");assertTrue(copy.getWidth()<detail.content.getWidth()*.55f);
             onMain(more::requestFocus);settle();screenshot("web-detail-more-focused.png");assertSame("更多按钮必须获得焦点",more,detail.getCurrentFocus());instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);settle();screenshot("web-detail-overview-dialog.png");awaitWindowText("关闭");instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);settle();
             choose("音轨",2);choose("字幕",1);assertEquals(-1,field(detail,"subtitle"));
             onMain(()->{((View)field(detail,"playButton")).requestFocus();((ScrollView)field(detail,"scroll")).scrollTo(0,0);});
-            screenshot("web-detail-six-line-overview.png");
+            screenshot("web-detail-three-line-overview.png");
             View background=(View)field(detail,"backdrop");onMain(()->((ScrollView)field(detail,"scroll")).scrollTo(0,120));settle();assertEquals(-((ScrollView)field(detail,"scroll")).getScrollY(),background.getTranslationY(),1f);
         }finally{cleanup();}
     }
@@ -183,6 +183,27 @@ public class DetailFlowTest {
     private Button button(String prefix){for(View view:descendants(detail.content))if(view instanceof Button&&(((Button)view).getText().toString().startsWith(prefix)||view.getContentDescription()!=null&&view.getContentDescription().toString().equals(prefix)))return (Button)view;return null;}
     private View contentDescription(String value){for(View view:descendants(detail.content))if(value.equals(view.getContentDescription()))return view;return null;}
     private Button findButton(View root,String title){for(View view:descendants(root))if(view instanceof Button&&title.equals(((Button)view).getText().toString()))return (Button)view;return null;}
+    @Test public void subtitleSizeAppliesImmediatelyAndSurvivesReopeningPlayback()throws Exception{
+        try(Fixture server=new Fixture()){
+            open(server,"movie-single");play();ExoPlayer original=(ExoPlayer)field(playback,"player");
+            onMain(()->((Button)field(playback,"subtitleButton")).performClick());settle();
+            onMain(()->{AlertDialog dialog=(AlertDialog)field(playback,"trackDialog");for(View view:descendants(dialog.getWindow().getDecorView()))if(view instanceof Button&&((Button)view).getText().toString().startsWith("字幕大小")){view.performClick();return;}fail("字幕菜单缺少字号入口");});
+            settle();screenshot("subtitle-size-menu.png");
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN);instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN);instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);settle();
+            onMain(()->{assertSame(original,field(playback,"player"));assertEquals(120,field(playback,"subtitleSize"));assertEquals(120,new TvPreferences(playback,playback.api).subtitleSize());
+                androidx.media3.ui.SubtitleView view=((androidx.media3.ui.PlayerView)field(playback,"video")).getSubtitleView();assertEquals(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION*1.2f,(Float)field(view,"defaultTextSize"),.0001f);assertEquals(false,field(view,"applyEmbeddedFontSizes"));assertNotNull(view.getTag(R.id.subtitle_ass_handler));});
+            closePlayer();play();assertEquals(120,field(playback,"subtitleSize"));
+        }finally{cleanup();}
+    }
+    @Test public void subtitleSizeKeepsBitmapDisplaySetAndRestoresAuthoredGeometry(){
+        Bitmap bitmap=Bitmap.createBitmap(2,2,Bitmap.Config.ARGB_8888);
+        try{
+            androidx.media3.common.text.Cue one=new androidx.media3.common.text.Cue.Builder().setBitmap(bitmap).setPosition(.3f).setPositionAnchor(0).setLine(.8f,0).setLineAnchor(0).setSize(.2f).setBitmapHeight(.05f).build();
+            androidx.media3.common.text.Cue two=one.buildUpon().setPosition(.5f).build();List<androidx.media3.common.text.Cue> source=Arrays.asList(one,two),scaled=SubtitleSize.cues(source,150);
+            assertEquals(.3f,scaled.get(0).size,.0001f);assertEquals(.075f,scaled.get(0).bitmapHeight,.0001f);assertEquals(.85f,scaled.get(0).line+scaled.get(0).bitmapHeight,.0001f);assertEquals(scaled.get(0).position+scaled.get(0).size,scaled.get(1).position,.0001f);
+            assertSame(source,SubtitleSize.cues(source,100));assertEquals(.8f,one.line,0);assertEquals(50,SubtitleSize.clamp(-1));assertEquals(200,SubtitleSize.clamp(300));
+        }finally{bitmap.recycle();}
+    }
     private void clickTrack(boolean subtitles,int index)throws Exception{onMain(()->((Button)field(playback,subtitles?"subtitleButton":"audioButton")).performClick());settle();onMain(()->{ListView list=((AlertDialog)field(playback,"trackDialog")).getListView();list.performItemClick(null,index,list.getAdapter().getItemId(index));});settle();}
     private void open(Fixture server,String id)throws Exception{
         if(pickerParent!=null){DetailActivity previous=pickerParent;onMain(previous::finish);await(previous::isDestroyed);pickerParent=null;}
@@ -215,9 +236,9 @@ public class DetailFlowTest {
     @Test public void detailTaglineUsesBoldThemeColorAboveOverview()throws Exception{
         try(Fixture server=new Fixture()){
             server.taglineFixture=true;open(server,"movie-single");TextView tagline=(TextView)field(detail,"detailTagline");TextView overview=(TextView)field(detail,"detailOverview");
-            assertEquals("简介最多六行",6,overview.getMaxLines());
+            assertEquals("简介最多三行",3,overview.getMaxLines());
             assertEquals("合成作品的标语",tagline.getText().toString());assertTrue(tagline.getTypeface().isBold());assertEquals(detail.resolveColor(TvActivity.ACCENT),tagline.getCurrentTextColor());
-            assertTrue(((ViewGroup)tagline.getParent()).indexOfChild(tagline)<((ViewGroup)overview.getParent()).indexOfChild(overview));
+            int[] taglinePoint=new int[2],overviewPoint=new int[2];tagline.getLocationOnScreen(taglinePoint);overview.getLocationOnScreen(overviewPoint);assertTrue(taglinePoint[1]+tagline.getHeight()<=overviewPoint[1]);
         }finally{cleanup();}
     }
     @Test public void returningFromMoviePlaybackRefreshesResumeActionAfterStoppedSync()throws Exception{
@@ -733,7 +754,7 @@ public class DetailFlowTest {
 
     @Test public void assProducesVisiblePixels()throws Exception{
         try(Fixture server=new Fixture(true)){
-            open(server,"movie-single");play();
+            open(server,"movie-single");new TvPreferences(detail,detail.api).setSubtitleSize(150);play();assertEquals(150,field(playback,"subtitleSize"));
             for(int i=0;i<3;i++){onMain(()->{ExoPlayer player=(ExoPlayer)field(playback,"player");player.seekTo(1000);player.play();});await(()->((ExoPlayer)field(playback,"player")).getCurrentPosition()>1300);}
             onMain(()->{ExoPlayer player=(ExoPlayer)field(playback,"player");player.seekTo(4000);player.play();});
             await(()->{ExoPlayer player=(ExoPlayer)field(playback,"player");return player.isPlaying()&&player.getCurrentPosition()>4300;});

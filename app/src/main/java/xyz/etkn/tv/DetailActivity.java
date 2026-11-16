@@ -222,12 +222,12 @@ public final class DetailActivity extends TvActivity {
         HorizontalScrollView selectionScroll=new FocusScroll.Row(this);selectionScroll.setHorizontalScrollBarEnabled(false);selectionScroll.addView(selections);detailCopy.addView(selectionScroll);
         detailVideoInfo=text("",12,MUTED);detailCopy.addView(detailVideoInfo);
         detailTagline=text("",16,ACCENT);detailTagline.setTypeface(null,Typeface.BOLD);detailTagline.setMaxLines(1);detailTagline.setEllipsize(android.text.TextUtils.TruncateAt.END);detailTagline.setPadding(0,dp(3),0,dp(3));detailCopy.addView(detailTagline);
-        TextView overview=text("",15,Color.rgb(219,227,237));detailOverview=overview;overview.setMaxLines(6);overview.setLineSpacing(dp(3),1f);overview.setEllipsize(android.text.TextUtils.TruncateAt.END);overview.setFocusableInTouchMode(false);overview.setPadding(0,dp(8),0,0);overview.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(EtknApi.title(item)).setMessage(item.optString("Overview")).setPositiveButton("关闭",null).show());
-        detailCopy.addView(overview,new LinearLayout.LayoutParams(-1,-2));
-        overviewMore=compactButton("更多",()->overview.performClick());overviewMore.setContentDescription("展开完整简介");overviewMore.setVisibility(View.GONE);detailCopy.addView(overviewMore);
+        TextView overview=text("",15,Color.rgb(219,227,237));detailOverview=overview;overview.setMaxLines(3);overview.setLineSpacing(dp(3),1f);overview.setEllipsize(android.text.TextUtils.TruncateAt.END);overview.setFocusableInTouchMode(false);overview.setPadding(0,dp(8),0,0);overview.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(EtknApi.title(item)).setMessage(item.optString("Overview")).setPositiveButton("关闭",null).show());
+        content.addView(overview,new LinearLayout.LayoutParams(-1,-2));
+        overviewMore=compactButton("更多",()->overview.performClick());overviewMore.setContentDescription("展开完整简介");overviewMore.setVisibility(View.GONE);content.addView(overviewMore);
         overview.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->overview.post(this::updateOverviewMore));
-        directorButtons=row();HorizontalScrollView directors=new FocusScroll.Row(this);directors.setHorizontalScrollBarEnabled(false);directors.setFocusable(false);directors.setFocusableInTouchMode(false);directors.addView(directorButtons);detailCopy.addView(directors);
-        LinearLayout.LayoutParams copyBounds=(LinearLayout.LayoutParams)detailCopy.getLayoutParams();copyBounds.bottomMargin=dp(24);
+        directorButtons=row();HorizontalScrollView directors=new FocusScroll.Row(this);directors.setHorizontalScrollBarEnabled(false);directors.setFocusable(false);directors.setFocusableInTouchMode(false);directors.addView(directorButtons);content.addView(directors);
+        LinearLayout.LayoutParams directorsBounds=(LinearLayout.LayoutParams)directors.getLayoutParams();directorsBounds.bottomMargin=dp(24);
         updateMetadata();
         renderChapters();
         renderCast();

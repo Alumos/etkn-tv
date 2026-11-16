@@ -24,6 +24,8 @@ final class TvPreferences {
         catch(org.json.JSONException invalid){return new org.json.JSONObject();}
     }
     void saveDanmaku(org.json.JSONObject settings){prefs.edit().putString(scope+"danmaku",settings.toString()).apply();}
+    int subtitleSize(){return SubtitleSize.clamp(prefs.getInt(scope+"subtitle-size",100));}
+    void setSubtitleSize(int value){prefs.edit().putInt(scope+"subtitle-size",SubtitleSize.clamp(value)).apply();}
     int bitrateLimit(){return prefs.getInt(scope+"bitrate-limit",0);}
     void setBitrateLimit(int value){prefs.edit().putInt(scope+"bitrate-limit",value).apply();}
     int skipMode(){int value=shared().optInt("skip_mode",prefs.getInt(scope+"skip",SKIP_BUTTON));return value>=0&&value<SKIP_LABELS.length?value:SKIP_BUTTON;}

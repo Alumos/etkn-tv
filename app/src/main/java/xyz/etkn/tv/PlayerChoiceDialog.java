@@ -22,9 +22,13 @@ final class PlayerChoiceDialog {
         return create(host,title,labels,selected,choice,maximumWidthDp,null,null);
     }
     static AlertDialog create(TvActivity host,String title,String[] labels,int selected,DialogInterface.OnClickListener choice,int maximumWidthDp,String actionLabel,Runnable action){
+        return create(host,title,labels,selected,choice,maximumWidthDp,actionLabel,action,null,null);
+    }
+    static AlertDialog create(TvActivity host,String title,String[] labels,int selected,DialogInterface.OnClickListener choice,int maximumWidthDp,String actionLabel,Runnable action,String secondLabel,Runnable secondAction){
         LinearLayout heading=host.column();heading.setPadding(host.dp(26),host.dp(18),host.dp(26),host.dp(10));
         heading.addView(host.text(title,23,TvActivity.TEXT));heading.addView(host.text("方向键选择 · 确认键应用",12,TvActivity.MUTED));
         Button topAction=action==null?null:host.button(actionLabel,action);if(topAction!=null)heading.addView(topAction);
+        if(secondAction!=null)heading.addView(host.button(secondLabel,secondAction));
         BaseAdapter adapter=new BaseAdapter(){
             @Override public int getCount(){return labels.length;}
             @Override public Object getItem(int position){return labels[position];}

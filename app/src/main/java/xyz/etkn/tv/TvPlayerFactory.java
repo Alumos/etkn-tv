@@ -87,11 +87,11 @@ final class TvPlayerFactory {
         };
         ExoPlayer player=builder.setRenderersFactory(timedRenderers).setMediaSourceFactory(new BlurayMediaSourceFactory(sources,observed,videoExtractors,externalParsers)).build();
         try{
-            if(ass!=null){ass.init(player);if(subtitleView!=null)subtitleView.addView(new AssSubtitleView(context,ass));}
+            if(ass!=null){ass.init(player);if(subtitleView!=null){subtitleView.addView(new AssSubtitleView(context,ass));SubtitleSize.bindAss(subtitleView,ass);}}
             return player;
         }catch(RuntimeException|LinkageError failure){player.release();clearAssView(subtitleView);throw failure;}
     }
-    static void clearAssView(SubtitleView view){if(view!=null)for(int i=view.getChildCount()-1;i>=0;i--)if(view.getChildAt(i) instanceof AssSubtitleView)view.removeViewAt(i);}
+    static void clearAssView(SubtitleView view){if(view!=null){view.setTag(R.id.subtitle_ass_handler,null);for(int i=view.getChildCount()-1;i>=0;i--)if(view.getChildAt(i) instanceof AssSubtitleView)view.removeViewAt(i);}}
     static boolean rendererFailure(PlaybackException error,int type){
         if(!(error instanceof ExoPlaybackException))return false;
         ExoPlaybackException failure=(ExoPlaybackException)error;

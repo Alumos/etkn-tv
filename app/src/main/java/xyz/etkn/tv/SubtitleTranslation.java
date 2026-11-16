@@ -54,6 +54,7 @@ final class SubtitleTranslation implements TranslationTrackOutput.Sink {
         FrameLayout.LayoutParams layout=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);layout.bottomMargin=(int)(parent.getResources().getDisplayMetrics().density*48);
         parent.addView(overlay,layout);handler.post(tick);
     }
+    void setSize(int percent){overlay.setTextSize(24f*SubtitleSize.clamp(percent)/100f);}
     boolean active(){return !closed;}
     @Override public synchronized void cue(long start,long end,String text){
         if(closed||start<0||end<=start||text.length()>2000)return;

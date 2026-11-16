@@ -73,7 +73,7 @@ public final class PlayerActivity extends TvActivity {
     private boolean confirmLongPressed;
     private TextView skipNotice;
     private ProgressBar playbackLoading;
-    private int skipMode;
+    private int skipMode,subtitleSize;
     private long skipTarget=-1;
     private long creditsCountdownStartedAt=-1;
     private long pendingSeekPosition=-1;
@@ -120,7 +120,7 @@ public final class PlayerActivity extends TvActivity {
         playbackSpeed=state==null?getIntent().getFloatExtra("speed",1f):state.getFloat("speed",1f);
         softwareVideo=state!=null&&state.getBoolean("softwareVideo");hardwareSurfaceRetry=state!=null&&state.getBoolean("hardwareSurfaceRetry");
         softwareAudio=state==null||state.getBoolean("softwareAudio",true);enhancedSubtitles=state==null||state.getBoolean("enhancedSubtitles",true);
-        playWhenReady=state==null||state.getBoolean("playWhenReady",true);skipMode=new TvPreferences(this,api).skipMode();
+        playWhenReady=state==null||state.getBoolean("playWhenReady",true);skipMode=new TvPreferences(this,api).skipMode();subtitleSize=new TvPreferences(this,api).subtitleSize();
         queueIds=getIntent().getStringArrayExtra("queue");queueIndex=getIntent().getIntExtra("queueIndex",0);queueMode=queueIds!=null&&queueIds.length>0;
         String seriesExtra=getIntent().getStringExtra("seriesId");nextLoaded=seriesExtra==null||seriesExtra.isEmpty();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -322,7 +322,7 @@ public final class PlayerActivity extends TvActivity {
             try{player=TvPlayerFactory.create(this,video.getSubtitleView(),softwareVideo,softwareAudio,enhancedSubtitles,translation,playbackTiming,playbackNetwork,subtitleOffsets.clock);}
             catch(RuntimeException|LinkageError failure){if(!enhancedSubtitles)throw failure;enhancedSubtitles=false;TvPlayerFactory.clearAssView(video.getSubtitleView());player=TvPlayerFactory.create(this,video.getSubtitleView(),softwareVideo,softwareAudio,false,translation,playbackTiming,playbackNetwork,subtitleOffsets.clock);TvNotice.show(this,"特效字幕初始化失败，已切换兼容字幕",Toast.LENGTH_LONG);}
             playbackTiming.event("player_created");
-            video.setPlayer(player);player.setPlaybackSpeed(playbackSpeed);
+            video.setPlayer(player);player.setPlaybackSpeed(playbackSpeed);applySubtitleSize();
             List<MediaItem.SubtitleConfiguration> subtitles=new ArrayList<>();JSONArray streams=source.optJSONArray("MediaStreams");
             TrackSelectionParameters.Builder preferences=player.getTrackSelectionParameters().buildUpon();
             preferences.setTrackTypeDisabled(C.TRACK_TYPE_TEXT,source.optInt("DefaultSubtitleStreamIndex",-1)<0);
@@ -352,6 +352,7 @@ public final class PlayerActivity extends TvActivity {
             player.addListener(new Player.Listener(){
                 @Override public void onEvents(Player current,Player.Events events){updatePlaybackOverlay();if(danmaku!=null)danmaku.tick();}
                 @Override public void onTimelineChanged(Timeline timeline,int reason){updateTimelineMarkers();}
+                @Override public void onCues(androidx.media3.common.text.CueGroup group){if(video.getSubtitleView()!=null)video.getSubtitleView().setCues(SubtitleSize.cues(group.cues,subtitleSize));}
                 @Override public void onPlaybackParametersChanged(PlaybackParameters parameters){playbackSpeed=parameters.speed;speedButton.setText("倍速 · "+speedLabel());}
                 @Override public void onRenderedFirstFrame(){playbackTiming.event("first_frame");videoFrameSeen=true;videoReadySince=0;updatePlaybackOverlay();updateVideoInfo();}
                 @Override public void onPositionDiscontinuity(Player.PositionInfo oldPosition,Player.PositionInfo newPosition,int reason){if((reason==Player.DISCONTINUITY_REASON_SEEK||reason==Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT)&&playbackNetwork!=null)playbackNetwork.afterSeek(android.os.SystemClock.elapsedRealtime());}
@@ -529,8 +530,19 @@ public final class PlayerActivity extends TvActivity {
                 requestAssistance(source.optBoolean("AudioOnly")?"audio_error":"track_switch");
             }else applyInitialTrack(type);
             updateTrackButtons();dialog.dismiss();
-        },600,subtitles&&subtitleOffsets!=null?"字幕偏移 · "+SubtitleOffsetSession.label(subtitleOffsets.clock.milliseconds):null,subtitles&&subtitleOffsets!=null?()->{trackDialog.dismiss();timer.post(()->{if(subtitleOffsets!=null){video.hideController();controls.setVisibility(View.GONE);subtitleOffsets.show();}});}:null);
+        },600,subtitles&&subtitleOffsets!=null?"字幕偏移 · "+SubtitleOffsetSession.label(subtitleOffsets.clock.milliseconds):null,subtitles&&subtitleOffsets!=null?()->{trackDialog.dismiss();timer.post(()->{if(subtitleOffsets!=null){video.hideController();controls.setVisibility(View.GONE);subtitleOffsets.show();}});}:null,subtitles?"字幕大小 · "+subtitleSize+"%":null,subtitles?()->{trackDialog.dismiss();timer.post(this::chooseSubtitleSize);}:null);
         trackDialog.setOnDismissListener(dialog->{video.setControllerShowTimeoutMs(5000);showControls();});trackDialog.show();
+    }
+    private void applySubtitleSize(){
+        SubtitleSize.apply(video.getSubtitleView(),subtitleSize);if(translation!=null)translation.setSize(subtitleSize);
+        if(player!=null&&video.getSubtitleView()!=null)video.getSubtitleView().setCues(SubtitleSize.cues(player.getCurrentCues().cues,subtitleSize));
+    }
+    private void chooseSubtitleSize(){
+        if(player==null)return;String[] labels=new String[16];for(int i=0;i<labels.length;i++)labels[i]=(50+i*10)+"%";
+        trackDialog=PlayerChoiceDialog.create(this,"字幕大小",labels,Math.round((subtitleSize-50)/10f),(dialog,index)->{
+            subtitleSize=50+index*10;new TvPreferences(this,api).setSubtitleSize(subtitleSize);applySubtitleSize();dialog.dismiss();
+        });
+        trackDialog.setOnDismissListener(dialog->showControls());trackDialog.show();
     }
     private JSONObject subtitleOffsetTarget(){
         if(source==null||subtitleIndex==-1)return null;
