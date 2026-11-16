@@ -555,14 +555,14 @@ public class DetailFlowTest {
 
     @Test public void matrixEntryUsesFirstOrResumeEpisodeAndMarksWatchedEpisodes()throws Exception{
         try(Fixture server=new Fixture()){
-            server.noProgress=true;openEpisodes(server,"series-one");assertEquals("episode-1-1",((JSONObject)field(detail,"playable")).optString("Id"));
+            server.noProgress=true;openEpisodes(server,"series-many");assertEquals("episode-1-1",((JSONObject)field(detail,"playable")).optString("Id"));
             assertTrue(button("第 1 集").getText().toString().contains("✓"));assertTrue(button("第 1 集").getContentDescription().toString().contains("已观看"));
             onMain(()->{GridLayout grid=(GridLayout)field(detail,"episodeGrid");assertTrue("最后一列应铺满可用宽度",Math.abs(grid.getWidth()-grid.getChildAt(grid.getColumnCount()-1).getRight())<=2);});
-            onMain(()->button("音轨").requestFocus());for(int i=0;i<8&&detail.getCurrentFocus()!=field(detail,"episodeEntry");i++){instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN);settle();}assertSame(button("第 1 集"),detail.getCurrentFocus());
+            onMain(()->button("第 1 季").requestFocus());for(int i=0;i<8&&detail.getCurrentFocus()!=field(detail,"episodeEntry");i++){instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN);settle();}assertSame(button("第 1 集"),detail.getCurrentFocus());
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT);settle();assertSame(button("第 2 集"),detail.getCurrentFocus());screenshot("watched-and-filled-matrix.png");
-            onMain(()->detail.finish());server.noProgress=false;openEpisodes(server,"series-one");
+            DetailActivity previous=detail;onMain(previous::finish);await(previous::isDestroyed);server.noProgress=false;openEpisodes(server,"series-many");
             onMain(()->{android.graphics.drawable.LayerDrawable background=(android.graphics.drawable.LayerDrawable)button("第 3 集").getBackground();assertEquals(3000,background.getDrawable(1).getLevel());assertTrue(button("第 3 集").getContentDescription().toString().contains("30%"));});
-            onMain(()->button("音轨").requestFocus());for(int i=0;i<8&&detail.getCurrentFocus()!=field(detail,"episodeEntry");i++){instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN);settle();}assertSame(button("第 3 集"),detail.getCurrentFocus());screenshot("resume-progress-matrix.png");android.os.SystemClock.sleep(1200);screenshot("focus-pulse-matrix.png");
+            onMain(()->button("第 1 季").requestFocus());for(int i=0;i<8&&detail.getCurrentFocus()!=field(detail,"episodeEntry");i++){instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN);settle();}assertSame(button("第 3 集"),detail.getCurrentFocus());screenshot("resume-progress-matrix.png");android.os.SystemClock.sleep(1200);screenshot("focus-pulse-matrix.png");
         }finally{cleanup();}
     }
 
@@ -1188,9 +1188,31 @@ public class DetailFlowTest {
             assertEquals("episode-1-2",((JSONObject)field(parent,"playable")).optString("Id"));assertEquals(source,field(parent,"sourceIndex"));assertEquals(selectedAudio,field(parent,"audio"));assertEquals(selectedSubtitle,field(parent,"subtitle"));assertSame(field(parent,"episodesButton"),parent.getCurrentFocus());assertNull(field(parent,"episodeGrid"));assertEquals(0,((ScrollView)field(parent,"scroll")).getScrollY());
         }finally{cleanup();}
     }
+    @Test public void episodeMatrixScrollStaysInsideTransparentViewport()throws Exception{
+        try(Fixture server=new Fixture()){
+            server.matrixEpisodeCount=96;openEpisodes(server,"series-one");
+            onMain(()->detail.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE));
+            ScrollView matrix=(ScrollView)field(detail,"episodeMatrixScroll"),page=(ScrollView)field(detail,"scroll");
+            GridLayout grid=(GridLayout)field(detail,"episodeGrid");View preview=(View)field(detail,"preview");
+            onMain(()->grid.getChildAt(0).requestFocus());settle();int pageY=page.getScrollY();
+            for(int row=0;row<18;row++){instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN);settle();}
+            screenshot("matrix-scrolled-down.png");
+            onMain(()->{
+                assertEquals("触底后继续加载后续分集",96,grid.getChildCount());assertTrue("矩阵内部确实发生滚动",matrix.getScrollY()>0);
+                assertEquals("向下选集不推动剧照简介",pageY,page.getScrollY());assertFullyVisible(preview);assertFullyVisible(detail.getCurrentFocus());
+                Rect viewport=new Rect(),info=new Rect();assertTrue(matrix.getGlobalVisibleRect(viewport));assertTrue(preview.getGlobalVisibleRect(info));assertTrue("矩阵必须位于剧照简介下方",viewport.top>=info.bottom);
+                assertFalse("滚出顶部的分集不可见",grid.getChildAt(0).getGlobalVisibleRect(new Rect()));
+                for(int i=0;i<grid.getChildCount();i++){Rect visible=new Rect();if(grid.getChildAt(i).getGlobalVisibleRect(visible))assertTrue("可见分集必须限制在矩阵框内",viewport.contains(visible));}
+                ViewGroup frame=(ViewGroup)matrix.getParent();assertTrue("矩阵使用独立透明裁剪框",frame instanceof FrameLayout);assertEquals(new Rect(0,0,frame.getWidth(),frame.getHeight()),frame.getClipBounds());
+                assertEquals(Color.TRANSPARENT,((android.graphics.drawable.ColorDrawable)frame.getBackground()).getColor());
+            });
+            for(int row=0;row<18&&grid.indexOfChild(detail.getCurrentFocus())>=grid.getColumnCount();row++){instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_UP);settle();}
+            onMain(()->{assertFullyVisible(detail.getCurrentFocus());assertTrue("向上可返回首行分集",grid.indexOfChild(detail.getCurrentFocus())>=0&&grid.indexOfChild(detail.getCurrentFocus())<grid.getColumnCount());});screenshot("matrix-scrolled-up.png");
+        }finally{cleanup();}
+    }
     @Test public void singleSeasonUsesNumberMatrixAndKeepsFocusedEpisodePreviewVisible()throws Exception{
         try(Fixture server=new Fixture()){
-            openEpisodes(server,"series-one");assertNull(button("第 1 季"));assertTrue("分集必须显式请求版本和轨道字段",((JSONArray)field(detail,"sources")).length()>0);assertEquals("继续播放",((Button)field(detail,"playButton")).getContentDescription().toString());screenshot("single-season-entry.png");
+            openEpisodes(server,"series-one");assertNull(button("第 1 季"));assertTrue("分集必须显式请求版本和轨道字段",((JSONArray)field(detail,"sources")).length()>0);assertNull("选集页不再包含播放按钮",field(detail,"playButton"));screenshot("single-season-entry.png");
             Button episode=button("第 2 集");assertNotNull(episode);onMain(episode::requestFocus);settle();
             assertTrue(((TextView)field(detail,"episodeTitle")).getText().toString().contains("故事 2"));assertEquals("第 2 集的合成简介",((TextView)field(detail,"episodeOverview")).getText().toString());
             Rect preview=new Rect();assertTrue(((View)field(detail,"preview")).getGlobalVisibleRect(preview));assertTrue(preview.height()>=detail.dp(140));
@@ -1551,6 +1573,7 @@ public class DetailFlowTest {
         volatile JSONObject appearance=new JSONObject();
         final java.util.concurrent.CountDownLatch playbackRequested=new java.util.concurrent.CountDownLatch(1),playbackGate=new java.util.concurrent.CountDownLatch(1);
         volatile int refreshStatusRequests;
+        volatile int matrixEpisodeCount=24;
         volatile String taskStatus="running";
         volatile boolean discoveryAllowed;
         volatile int discoveryChecks;
@@ -1633,7 +1656,17 @@ public class DetailFlowTest {
             if(path.contains("/Persons/person-1"))return new JSONObject().put("Id","person-1").put("Name","合成演员").put("Overview","合成人物简介");
             if(path.contains("/PlaybackInfo")){JSONArray original=sources(!path.contains("movie-single")),reversed=new JSONArray();for(int i=original.length()-1;i>=0;i--)reversed.put(original.get(i));JSONObject result=new JSONObject().put("MediaSources",reversed).put("PlaySessionId","synthetic-play");if(danmakuFeature)result.put("Danmaku",danmakuState());return result;}
             if(path.contains("/Seasons")){JSONArray seasons=new JSONArray().put(new JSONObject().put("Id","season-1").put("Name","第 1 季"));if(path.contains("series-many"))seasons.put(new JSONObject().put("Id","season-2").put("Name","第 2 季"));return new JSONObject().put("Items",seasons);}
-            if(path.contains("/Episodes")){JSONArray episodes=new JSONArray();int seasons=path.contains("series-many")?2:1;for(int s=1;s<=seasons;s++)for(int e=1;e<=(s==1?24:12);e++)episodes.put(new JSONObject().put("Id","episode-"+s+"-"+e).put("Type","Episode").put("Name","故事 "+e).put("SeriesName","合成剧集").put("SeriesId",seasons==2?"series-many":"series-one").put("SeasonId","season-"+s).put("ParentIndexNumber",s).put("IndexNumber",e).put("RunTimeTicks",100000000).put("Overview","第 "+e+" 集的合成简介").put("ParentBackdropItemId","series-parent").put("MediaSources",sources(false)).put("UserData",new JSONObject().put("PlaybackPositionTicks",playbackTicks("episode-"+s+"-"+e,!noProgress&&s==seasons&&e==3?30000000:0)).put("Played",e==1)));if(placeholderDates)for(int i=0;i<episodes.length();i++){JSONObject ep=episodes.getJSONObject(i);int n=ep.optInt("IndexNumber");if(n>=4&&n<=7){ep.put("IsMissing",true).put("LocationType","Virtual");if(n<=6)ep.put("PremiereDate",placeholderDate(n-4)+"T00:00:00Z");}}if(!path.contains("Fields=MediaSources,MediaStreams,Overview"))for(int i=0;i<episodes.length();i++)episodes.getJSONObject(i).remove("MediaSources");return new JSONObject().put("Items",episodes);}
+            if(path.contains("/PlaybackTarget")||path.contains("/EpisodePage")){
+                android.net.Uri uri=android.net.Uri.parse("http://fixture"+path);String season=uri.getQueryParameter("SeasonId");
+                List<JSONObject> episodes=EtknApi.rows(response(path.substring(0,path.lastIndexOf('/'))+"/Episodes?Fields=MediaSources,MediaStreams,Overview"));
+                if(season!=null&&!season.isEmpty())episodes.removeIf(ep->!season.equals(ep.optString("SeasonId")));
+                if(path.contains("/PlaybackTarget")){JSONObject target=DetailPresentation.recommended(episodes);return new JSONObject().put("Items",target==null?new JSONArray():new JSONArray().put(target));}
+                int start=uri.getQueryParameter("StartIndex")==null?0:Integer.parseInt(uri.getQueryParameter("StartIndex"));int limit=uri.getQueryParameter("Limit")==null?40:Integer.parseInt(uri.getQueryParameter("Limit"));
+                String anchor=uri.getQueryParameter("AnchorId");if(anchor!=null)for(int i=0;i<episodes.size();i++)if(anchor.equals(episodes.get(i).optString("Id"))){start=i/limit*limit;break;}
+                JSONArray page=new JSONArray();for(int i=start;i<Math.min(start+limit,episodes.size());i++)page.put(episodes.get(i));
+                return new JSONObject().put("Items",page).put("StartIndex",start).put("NextStartIndex",start+page.length()).put("TotalRecordCount",episodes.size());
+            }
+            if(path.contains("/Episodes")){JSONArray episodes=new JSONArray();int seasons=path.contains("series-many")?2:1;for(int s=1;s<=seasons;s++)for(int e=1;e<=(s==1?matrixEpisodeCount:12);e++)episodes.put(new JSONObject().put("Id","episode-"+s+"-"+e).put("Type","Episode").put("Name","故事 "+e).put("SeriesName","合成剧集").put("SeriesId",seasons==2?"series-many":"series-one").put("SeasonId","season-"+s).put("ParentIndexNumber",s).put("IndexNumber",e).put("RunTimeTicks",100000000).put("Overview","第 "+e+" 集的合成简介").put("ParentBackdropItemId","series-parent").put("MediaSources",sources(false)).put("UserData",new JSONObject().put("PlaybackPositionTicks",playbackTicks("episode-"+s+"-"+e,!noProgress&&s==seasons&&e==3?30000000:0)).put("Played",e==1)));if(placeholderDates)for(int i=0;i<episodes.length();i++){JSONObject ep=episodes.getJSONObject(i);int n=ep.optInt("IndexNumber");if(n>=4&&n<=7){ep.put("IsMissing",true).put("LocationType","Virtual");if(n<=6)ep.put("PremiereDate",placeholderDate(n-4)+"T00:00:00Z");}}if(!path.contains("Fields=MediaSources,MediaStreams,Overview"))for(int i=0;i<episodes.length();i++)episodes.getJSONObject(i).remove("MediaSources");return new JSONObject().put("Items",episodes);}
             String id=path.substring(path.lastIndexOf('/')+1).split("\\?")[0];boolean series=id.startsWith("series");JSONObject item=base(id,series?"Series":id.startsWith("episode-")?"Episode":"Movie");if(taglineFixture)item.put("Tagline","合成作品的标语");if(browseFeatures){item.put(series?"Networks":"Companies",new JSONArray().put(series?"中文平台":"中文公司"));if(studioIcons)item.put("StudioImageTags",new JSONObject().put(series?"Networks":"Companies",new JSONObject().put(series?"中文平台":"中文公司","studio-icon")));}if(liveArtwork&&changed)item.put("Name","服务器更新后的片名").put("Overview","服务器已更新的简介").put("TMDbRating",8.2).put("DoubanRating",9.1).put("IMDbRating",8.6).put("CustomRating","自定义 16+");if(id.equals("movie-no-overview"))item.put("Overview","");if(id.startsWith("episode-"))item.put("SeriesId","series-one");if(!series)item.put("MediaSources",sources(!id.equals("movie-single")&&!id.startsWith("episode-")));if(id.equals("movie-chapters")||id.equals("movie-no-overview"))item.put("Chapters",new JSONArray().put(new JSONObject().put("Name","开场").put("ChapterIndex",0).put("StartPositionTicks",0).put("ImageTag","chapter-0").put("ImagePath","/api/tv/Items/movie-chapters/Images/Chapter/0")).put(new JSONObject().put("Name","转折").put("ChapterIndex",1).put("StartPositionTicks",600000000).put("ImageTag","chapter-1").put("ImagePath","/api/tv/Items/movie-chapters/Images/Chapter/1")));return item;
         }
         void serve(Socket client)throws Exception{

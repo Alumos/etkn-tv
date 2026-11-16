@@ -558,7 +558,16 @@ public final class DetailActivity extends TvActivity {
         List<JSONObject> episodes=new ArrayList<>();for(JSONObject episode:allEpisodes)if(seasonId.isEmpty()||seasonId.equals(episode.optString("SeasonId")))episodes.add(episode);if(episodes.isEmpty())return;
         JSONObject selected=preferred==null?DetailPresentation.recommended(episodes):preferred;setPlayable(selected);updatePreview(selected);episodePageSeason=seasonId;episodeMatrixEpisodes.clear();episodeMatrixEpisodes.addAll(episodes);
         GridLayout grid=new GridLayout(this);episodeGrid=grid;episodeEntry=null;int available=getResources().getConfiguration().screenWidthDp-84;int columns=Math.max(3,available/112);grid.setColumnCount(columns);int matrixHeight=24;for(int index=0;index<episodes.size();index+=columns)matrixHeight+=(DetailPresentation.episodeRowHasDates(episodes,index,columns)?68:44)+14;
-        episodeMatrixScroll=new FocusScroll.Vertical(this);episodeMatrixScroll.setFillViewport(false);episodeMatrixScroll.setClipChildren(true);episodeMatrixScroll.setClipToPadding(true);episodeMatrixScroll.setTranslationZ(0);episodeMatrixScroll.addView(grid);episodeArea.addView(episodeMatrixScroll,new LinearLayout.LayoutParams(-1,dp(Math.min(224,Math.max(96,matrixHeight)))));
+        // Keep scrolled rows and their elevated shadows below the fixed episode preview.
+        FrameLayout matrixFrame=new FrameLayout(this){
+            @Override protected void onSizeChanged(int width,int height,int oldWidth,int oldHeight){
+                super.onSizeChanged(width,height,oldWidth,oldHeight);setClipBounds(new Rect(0,0,width,height));
+            }
+        };
+        matrixFrame.setBackgroundColor(Color.TRANSPARENT);matrixFrame.setClipChildren(true);matrixFrame.setClipToPadding(true);
+        grid.setPadding(0,dp(FocusScroll.MARGIN_DP),0,dp(FocusScroll.MARGIN_DP));
+        episodeMatrixScroll=new FocusScroll.Vertical(this);episodeMatrixScroll.setFillViewport(false);episodeMatrixScroll.setClipChildren(true);episodeMatrixScroll.setClipToPadding(true);episodeMatrixScroll.setTranslationZ(0);episodeMatrixScroll.addView(grid);
+        matrixFrame.addView(episodeMatrixScroll,new FrameLayout.LayoutParams(-1,-1));episodeArea.addView(matrixFrame,new LinearLayout.LayoutParams(-1,dp(Math.min(224,Math.max(96,matrixHeight)))));
         appendEpisodeCells(grid,episodes,selected);
         episodeMatrixScroll.setOnScrollChangeListener((view,x,y,oldX,oldY)->{if(y+view.getHeight()>=episodeMatrixScroll.getChildAt(0).getHeight()-dp(120))loadMoreEpisodes();});
     }
