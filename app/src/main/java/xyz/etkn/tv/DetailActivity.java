@@ -85,12 +85,15 @@ public final class DetailActivity extends TvActivity {
     @Override public boolean dispatchKeyEvent(KeyEvent event){
         if(mainMenuTransitionKey!=0&&event.getKeyCode()==mainMenuTransitionKey){if(event.getAction()==KeyEvent.ACTION_UP)mainMenuTransitionKey=0;return true;}
         if(event.getAction()==KeyEvent.ACTION_DOWN){
+            if(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&episodeGrid!=null&&episodeMatrixScroll!=null){
+                View current=getCurrentFocus();int index=episodeGrid.indexOfChild(current),columns=episodeGrid.getColumnCount();
+                if(index>=0&&index<columns&&episodePageStart>0){loadPreviousEpisodes();return true;}
+            }
             if(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&menu.getVisibility()!=View.VISIBLE){View focused=getCurrentFocus();if(focused==null||focused.focusSearch(View.FOCUS_UP)==null){showMainMenu();mainMenuTransitionKey=event.getKeyCode();return true;}}
             if(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN&&menu.getVisibility()==View.VISIBLE){hideMainMenu();mainMenuTransitionKey=event.getKeyCode();return true;}
         }
         if(event.getAction()==KeyEvent.ACTION_DOWN&&(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN||event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP)){
             View current=getCurrentFocus();int direction=event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN?View.FOCUS_DOWN:View.FOCUS_UP;
-            if(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP&&episodeGrid!=null&&episodeMatrixScroll!=null&&current==episodeGrid.getChildAt(0)&&episodePageStart>0){loadPreviousEpisodes();return true;}
             View next=current==null?null:current.focusSearch(direction);
             if(castEntry!=null&&!inCast(current)&&inCast(next)){castScroll.scrollTo(0,0);castEntry.requestFocus();return true;}
             if(episodeEntry!=null&&current!=null&&!inEpisodeMatrix(current)&&inEpisodeMatrix(next)){episodeEntry.requestFocus();return true;}
@@ -180,7 +183,7 @@ public final class DetailActivity extends TvActivity {
         HorizontalScrollView selectionScroll=new FocusScroll.Row(this);selectionScroll.setHorizontalScrollBarEnabled(false);selectionScroll.addView(selections);content.addView(selectionScroll);
         detailTagline=text("",16,ACCENT);detailTagline.setTypeface(null,Typeface.BOLD);detailTagline.setMaxLines(1);detailTagline.setEllipsize(android.text.TextUtils.TruncateAt.END);detailTagline.setPadding(0,dp(3),0,dp(3));content.addView(detailTagline);
         TextView overview=text("",15,Color.rgb(219,227,237));detailOverview=overview;overview.setLines(3);overview.setEllipsize(android.text.TextUtils.TruncateAt.END);overview.setFocusableInTouchMode(false);overview.setPadding(dp(10),dp(5),dp(10),dp(5));overview.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(EtknApi.title(item)).setMessage(item.optString("Overview")).setPositiveButton("关闭",null).show());
-        content.addView(overview,new LinearLayout.LayoutParams(-1,-2));
+        overview.setTranslationZ(dp(3));content.addView(overview,new LinearLayout.LayoutParams(-1,-2));
         updateMetadata();
         renderCast();
         renderChapters();
@@ -261,9 +264,13 @@ public final class DetailActivity extends TvActivity {
         actionIcon(button,icon,label,false);return button;
     }
     private void actionIcon(Button button,String icon,String label,boolean active){
+        if(button==null)return;
         MediaActionIcon drawable=new MediaActionIcon(icon,active);drawable.setBounds(0,0,dp(24),dp(24));button.setCompoundDrawables(drawable,null,null,null);button.setContentDescription(label);
     }
-    private void updatePlayAction(){boolean resume=DetailPresentation.position(playable)>0;actionIcon(playButton,resume?"resume":"play",resume?"继续播放":"播放",false);restartButton.setVisibility(resume?View.VISIBLE:View.GONE);}
+    private void updatePlayAction(){
+        if(playButton==null)return;
+        boolean resume=DetailPresentation.position(playable)>0;actionIcon(playButton,resume?"resume":"play",resume?"继续播放":"播放",false);if(restartButton!=null)restartButton.setVisibility(resume?View.VISIBLE:View.GONE);
+    }
     private void focusPlay(){playButton.post(()->{playButton.requestFocus();scroll.scrollTo(0,0);});}
     private JSONObject userData(){JSONObject data=item==null?null:item.optJSONObject("UserData");return data==null?new JSONObject():data;}
     private void refreshStateButtons(){
@@ -508,7 +515,7 @@ public final class DetailActivity extends TvActivity {
             int selected=PlaybackSelection.sourceIndex(sources,getIntent().getStringExtra("sourceId"));if(selected>=0)sourceIndex=selected;audio=getIntent().getIntExtra("audioIndex",PlaybackSelection.AUTO);subtitle=getIntent().getIntExtra("subtitleIndex",PlaybackSelection.AUTO);updateChoices();
             LinearLayout seasonRow=row();HorizontalScrollView seasonScroll=new FocusScroll.Row(this);seasonScroll.setHorizontalScrollBarEnabled(false);seasonScroll.setClipToPadding(false);seasonScroll.addView(seasonRow);
             View seasonEntry=null;if(seasons.size()>1&&!item.optString("Type").equals("Season")){episodeArea.addView(seasonScroll);for(JSONObject season:seasons){View card=seasonCard(season,()->showSeason(season.optString("Id")));visibleSeasons.put(season.optString("Id"),season);seasonCards.put(season.optString("Id"),card);seasonRow.addView(card);if(season.optString("Id").equals(recommended.optString("SeasonId")))seasonEntry=((ViewGroup)card).getChildAt(2);}}
-            preview=row();preview.setGravity(Gravity.CENTER_VERTICAL);preview.setPadding(0,dp(8),0,dp(8));preview.setTranslationZ(dp(1));
+            preview=row();preview.setGravity(Gravity.CENTER_VERTICAL);preview.setPadding(0,dp(8),0,dp(8));preview.setTranslationZ(dp(3));
             episodeImage=new ImageView(this);episodeImage.setScaleType(ImageView.ScaleType.CENTER_CROP);Images.rounded(episodeImage,dp(8));episodeImage.setForeground(Images.border(dp(8)));preview.addView(episodeImage,new LinearLayout.LayoutParams(dp(224),dp(126)));
             LinearLayout copy=column();copy.setPadding(dp(18),0,0,0);episodeTitle=text("",19,Color.WHITE);episodeTitle.setMaxLines(2);copy.addView(episodeTitle);episodeOverview=text("",14,MUTED);episodeOverview.setMaxLines(4);episodeOverview.setEllipsize(android.text.TextUtils.TruncateAt.END);copy.addView(episodeOverview);preview.addView(copy,new LinearLayout.LayoutParams(0,dp(144),1));episodeArea.addView(preview);
             showSeason(recommended.optString("SeasonId"),recommended);status.setText(episodePageTotal+" 集");
@@ -527,13 +534,13 @@ public final class DetailActivity extends TvActivity {
         List<JSONObject> episodes=new ArrayList<>();for(JSONObject episode:allEpisodes)if(seasonId.isEmpty()||seasonId.equals(episode.optString("SeasonId")))episodes.add(episode);if(episodes.isEmpty())return;
         JSONObject selected=preferred==null?DetailPresentation.recommended(episodes):preferred;setPlayable(selected);updatePreview(selected);episodePageSeason=seasonId;episodeMatrixEpisodes.clear();episodeMatrixEpisodes.addAll(episodes);
         GridLayout grid=new GridLayout(this);episodeGrid=grid;episodeEntry=null;int available=getResources().getConfiguration().screenWidthDp-84;int columns=Math.max(3,available/112);grid.setColumnCount(columns);int matrixHeight=24;for(int index=0;index<episodes.size();index+=columns)matrixHeight+=(DetailPresentation.episodeRowHasDates(episodes,index,columns)?68:44)+14;
-        episodeMatrixScroll=new FocusScroll.Vertical(this);episodeMatrixScroll.setFillViewport(false);episodeMatrixScroll.setClipChildren(true);episodeMatrixScroll.setClipToPadding(true);episodeMatrixScroll.addView(grid);episodeArea.addView(episodeMatrixScroll,new LinearLayout.LayoutParams(-1,dp(Math.min(224,Math.max(96,matrixHeight)))));
+        episodeMatrixScroll=new FocusScroll.Vertical(this);episodeMatrixScroll.setFillViewport(false);episodeMatrixScroll.setClipChildren(true);episodeMatrixScroll.setClipToPadding(true);episodeMatrixScroll.setTranslationZ(0);episodeMatrixScroll.addView(grid);episodeArea.addView(episodeMatrixScroll,new LinearLayout.LayoutParams(-1,dp(Math.min(224,Math.max(96,matrixHeight)))));
         appendEpisodeCells(grid,episodes,selected);
         episodeMatrixScroll.setOnScrollChangeListener((view,x,y,oldX,oldY)->{if(y+view.getHeight()>=episodeMatrixScroll.getChildAt(0).getHeight()-dp(120))loadMoreEpisodes();});
     }
     private void appendEpisodeCells(GridLayout grid,List<JSONObject> episodes,JSONObject selected){
         int columns=grid.getColumnCount(),available=getResources().getConfiguration().screenWidthDp-84,cellWidth=(dp(available)-dp(10)*(columns-1))/columns;
-        for(JSONObject episode:episodes){int index=grid.getChildCount();boolean dates=DetailPresentation.episodeRowHasDates(episodeMatrixEpisodes,index,columns);int cellHeight=dates?68:44;Button cell=button("",()->playEpisode(episode));if(dates){cell.setSingleLine(false);cell.setMaxLines(2);cell.setPadding(dp(6),0,dp(6),0);}updateEpisodeCell(cell,episode,dates);episodeCells.put(episode.optString("Id"),cell);episodeCellDates.put(episode.optString("Id"),dates);if(selected!=null&&episode.optString("Id").equals(selected.optString("Id")))episodeEntry=cell;GridLayout.LayoutParams bounds=new GridLayout.LayoutParams();bounds.width=cellWidth;bounds.height=dp(cellHeight);bounds.setMargins(0,dp(7),index%columns==columns-1?0:dp(10),dp(7));grid.addView(cell,bounds);cell.setOnFocusChangeListener((view,focused)->{if(focused){setPlayable(episode);updatePreview(episode);scroll.post(()->{Rect rect=new Rect();preview.getDrawingRect(rect);content.offsetDescendantRectToMyCoords(preview,rect);scroll.smoothScrollTo(0,Math.max(0,rect.top-dp(24)));});}});}
+        for(JSONObject episode:episodes){int index=grid.getChildCount();boolean dates=DetailPresentation.episodeRowHasDates(episodeMatrixEpisodes,index,columns);int cellHeight=dates?68:44;Button cell=button("",()->playEpisode(episode));if(dates){cell.setSingleLine(false);cell.setMaxLines(2);cell.setPadding(dp(6),0,dp(6),0);}updateEpisodeCell(cell,episode,dates);episodeCells.put(episode.optString("Id"),cell);episodeCellDates.put(episode.optString("Id"),dates);if(selected!=null&&episode.optString("Id").equals(selected.optString("Id")))episodeEntry=cell;GridLayout.LayoutParams bounds=new GridLayout.LayoutParams();bounds.width=cellWidth;bounds.height=dp(cellHeight);bounds.setMargins(0,dp(7),index%columns==columns-1?0:dp(10),dp(7));grid.addView(cell,bounds);cell.setOnFocusChangeListener((view,focused)->{if(focused){setPlayable(episode);updatePreview(episode);Runnable keepPreview=()->{if(preview==null||episodeMatrixScroll==null)return;Rect rect=new Rect();preview.getDrawingRect(rect);content.offsetDescendantRectToMyCoords(preview,rect);scroll.smoothScrollTo(0,Math.max(0,rect.top-dp(24)));};scroll.post(keepPreview);scroll.postDelayed(keepPreview,120);}});}
     }
     private void loadEpisodeSeason(String seasonId){
         if(episodePageLoading)return;episodePageLoading=true;int ticket=++episodePageTicket;status.setText("正在读取分集…");String series=item.optString("Type").equals("Series")?item.optString("Id"):item.optString("SeriesId",item.optString("ParentId"));
