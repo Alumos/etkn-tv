@@ -80,6 +80,7 @@ final class MusicPlayback {
     }
     boolean playing(){return player!=null&&player.isPlaying();}
     boolean loading(){return loading;}
+    String sourceId(){return source==null?"":source.optString("Id");}
     long position(){return player==null?0:Math.max(0,player.getCurrentPosition());}
     long duration(){return player!=null&&player.getDuration()>0?player.getDuration():queue.current()==null?0:queue.current().optLong("RunTimeTicks")/10000;}
     void toggle(){if(player==null||player.getPlayerError()!=null){playAt(queue.index);return;}if(player.isPlaying())player.pause();else player.play();changed();}

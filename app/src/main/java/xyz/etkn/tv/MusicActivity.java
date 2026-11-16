@@ -15,7 +15,8 @@ public final class MusicActivity extends TvActivity {
     private String parent="",tab="recommended",key="",title="音乐";
     private final List<JSONObject> tracks=new ArrayList<>();
     private int revision,offset,total;
-    private boolean loading,tracksOnly,loaded;
+    private boolean loading,tracksOnly,loaded,pageFailed;
+    private android.os.CancellationSignal pageRequest;
     private GridLayout listing;
     private Button more;
     private JSONObject artist;
@@ -37,20 +38,22 @@ public final class MusicActivity extends TvActivity {
         mainMenu=new HorizontalScrollView(this);mainMenu.setHorizontalScrollBarEnabled(false);mainMenu.setBackground(capsuleSurface(TvAppearance.surface(appearanceDark())));mainMenu.addView(nav,new FrameLayout.LayoutParams(-2,-1));mainMenu.setVisibility(View.GONE);
         FrameLayout.LayoutParams menuBounds=new FrameLayout.LayoutParams(-2,dp(68),Gravity.TOP|Gravity.CENTER_HORIZONTAL);menuBounds.topMargin=dp(12);stage.addView(mainMenu,menuBounds);
         mainMenuItem("首页",()->openHome("home"));mainMenuItem("媒体库",()->openHome("library"));mainMenuItem("音乐",()->{tab="recommended";key="";tracksOnly=false;load();});mainMenuItem("收藏",()->openHome("favorites"));mainMenuItem("搜索",()->openHome("search"));mainMenuItem("设置",()->open(SettingsActivity.class));
+        screenScroll.setOnScrollChangeListener((view,x,y,oldX,oldY)->nextPageIfNeeded());
+        root.addOnLayoutChangeListener((view,l,t,r,b,ol,ot,or,ob)->nextPageIfNeeded());
         setContentView(stage);musicMenu.getChildAt(Math.max(0,Arrays.asList(TABS).indexOf(tab))).requestFocus();
         async(()->api.get("/api/tv/auth/check_status"),result->{JSONObject user=result.optJSONObject("user");if(user!=null&&user.optBoolean("can_access_discovery")){int index=nav.getChildCount()-1;mainMenuItem("影视探索",()->open(DiscoveryActivity.class));View entry=nav.getChildAt(nav.getChildCount()-1);nav.removeView(entry);nav.addView(entry,index);}});
         load();
     }
     private static String value(Intent intent,String key,String fallback){String value=intent.getStringExtra(key);return value==null?fallback:value;}
-    private String path(){return api.userPath()+"/Music?ParentId="+EtknApi.encode(parent)+"&Tab="+tab+"&Key="+EtknApi.encode(key)+"&SortBy=Name&SortOrder=Ascending"+(tracksOnly?"&Tracks=1":"");}
+    private String path(){boolean newest=key.isEmpty()&&(tab.equals("albums")||tab.equals("artists"));return api.userPath()+"/Music?ParentId="+EtknApi.encode(parent)+"&Tab="+tab+"&Key="+EtknApi.encode(key)+(newest?"&SortBy=DateCreated&SortOrder=Descending":"&SortBy=Name&SortOrder=Ascending")+(tracksOnly?"&Tracks=1":"");}
     private void load(){
-        revision++;offset=0;total=0;tracks.clear();artist=null;loading=false;content.removeAllViews();status.setText("正在读取音乐…");
+        revision++;if(pageRequest!=null)pageRequest.cancel();pageRequest=null;offset=0;total=0;tracks.clear();artist=null;loading=false;pageFailed=false;listing=null;more=null;content.removeAllViews();status.setText("正在读取音乐…");
         for(int i=0;i<TABS.length;i++){Button choice=(Button)musicMenu.getChildAt(i);themeText(choice,TABS[i].equals(tab)?ACCENT:TEXT);choice.setTypeface(null,TABS[i].equals(tab)?android.graphics.Typeface.BOLD:android.graphics.Typeface.NORMAL);}
         if(tab.equals("recommended")){recommendations();return;}
         if(tab.equals("playlists")&&key.isEmpty()){playlists();return;}
         if(tab.equals("albums")&&!key.isEmpty()){playAlbum(key,title);return;}
         listing=grid(content,tracksOnly||!key.isEmpty()&&!tab.equals("artists")?300:140,12,104);
-        listing.setPadding(0,dp(8),0,dp(12));more=button("加载更多",this::page);content.addView(more);page();
+        listing.setPadding(0,dp(8),0,dp(12));more=button("重试加载",this::page);more.setVisibility(View.GONE);content.addView(more);page();
     }
     private void recommendations(){int ticket=revision;async(()->api.get(path()+"&FrequentLimit="+Math.min(200,Math.max(6,shelfCapacity(300,12,88)*2))),result->{if(ticket!=revision)return;content.removeAllViews();status.setText("推荐音乐");
         for(String section:new String[]{"Latest","Recent","Frequent"}){
@@ -67,17 +70,28 @@ public final class MusicActivity extends TvActivity {
     private void playlists(){int ticket=revision;async(()->api.get(path()),result->{if(ticket!=revision)return;status.setText("我的歌单");content.addView(button("新建歌单",()->MusicActions.createPlaylist(this,created->load())));JSONArray data=result.optJSONArray("Playlists");List<JSONObject> lists=items(data);if(lists.isEmpty())content.addView(text("暂无歌单，选择“新建歌单”添加。",16,MUTED));
         GridLayout grid=grid(content,300,12,104);for(JSONObject list:lists){Button row=button(list.optString("Name")+"  ·  "+list.optInt("Count")+" 首",()->open(this,parent,"playlists",list.optString("Key"),list.optString("Name")));row.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);addAdaptiveGridItem(grid,row,12,12);row.setOnLongClickListener(view->{deletePlaylist(list);return true;});row.setTag(list);row.setOnKeyListener((view,code,event)->{if(code!=KeyEvent.KEYCODE_MENU)return false;if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0)deletePlaylist(list);return true;});}
     });}
+    private void nextPageIfNeeded(){
+        if(listing==null||more==null||loading||pageFailed||offset>=total||!screenScroll.isShown())return;
+        if(root.getHeight()-screenScroll.getScrollY()-screenScroll.getHeight()<=screenScroll.getHeight()/2)page();
+    }
     private void page(){
-        if(loading)return;loading=true;more.setEnabled(false);int ticket=revision,start=offset;
-        async(()->{try{return api.get(path()+"&StartIndex="+start+"&Limit=60");}finally{runOnUiThread(()->{if(ticket==revision){loading=false;if(more!=null)more.setEnabled(true);}});}},result->{
-            if(ticket!=revision)return;
+        if(loading||listing==null)return;loading=true;pageFailed=false;more.setVisibility(View.GONE);int ticket=revision,start=offset;
+        String address=path()+"&StartIndex="+start+"&Limit=60";android.os.CancellationSignal cancellation=new android.os.CancellationSignal();pageRequest=cancellation;
+        IO.execute(()->{try{JSONObject result=api.get(address,cancellation);runOnUiThread(()->{
+            if(ticket!=revision||isFinishing()||isDestroyed()||!TvAppearance.sameSession(api,api.userId))return;
+            loading=false;pageRequest=null;
             List<JSONObject> rows=EtknApi.rows(result);total=result.optInt("TotalRecordCount",start+rows.size());offset=start+rows.size();
             if(start==0){JSONObject info=result.optJSONObject("Artist");artist=info;if(info!=null&&!tracksOnly){LinearLayout header=column();header.setPadding(dp(12),dp(8),dp(12),dp(12));TextView bio=text(info.optString("Overview"),14,MUTED);bio.setMaxLines(4);header.addView(bio);header.addView(button("播放歌手全部歌曲",()->{tracksOnly=true;load();}));content.addView(header,0);}
                 JSONArray folders=result.optJSONArray("Folders");for(JSONObject folder:items(folders))MusicViews.card(this,listing,folder,()->openGroup(folder),false);
             }
             for(JSONObject item:rows){boolean track=item.optString("Kind").isEmpty()&&"Audio".equals(item.optString("Type"));if(track)tracks.add(item);View card=MusicViews.card(this,listing,item,()->{if(track)play(item,tracks,path());else openGroup(item);},track);if(track)bindTrack(card,item);}
-            more.setVisibility(offset<total?View.VISIBLE:View.GONE);status.setText((result.optString("Title").isEmpty()?title:result.optString("Title"))+"  ·  "+(rows.isEmpty()&&start==0?"暂无音乐":"已加载 "+offset+" / "+total));
-        });
+            if(rows.isEmpty())total=offset;
+            status.setText((result.optString("Title").isEmpty()?title:result.optString("Title"))+"  ·  "+(rows.isEmpty()&&start==0?"暂无音乐":"已加载 "+offset+" / "+total));
+        });}catch(Exception error){runOnUiThread(()->{
+            if(ticket!=revision||cancellation.isCanceled()||isFinishing()||isDestroyed()||!TvAppearance.sameSession(api,api.userId))return;
+            loading=false;pageRequest=null;pageFailed=true;more.setVisibility(View.VISIBLE);status.setText(error.getMessage()==null?"音乐加载失败，请重试":error.getMessage());
+            if(error instanceof EtknApi.AuthException){api.session.clear();open(SetupActivity.class);finish();}
+        });}});
     }
     private static List<JSONObject> items(JSONArray array){List<JSONObject> items=new ArrayList<>();if(array!=null)for(int i=0;i<array.length();i++)if(array.optJSONObject(i)!=null)items.add(array.optJSONObject(i));return items;}
     private String albumPath(String albumKey){return api.userPath()+"/Music?ParentId="+EtknApi.encode(parent)+"&Tab=albums&Key="+EtknApi.encode(albumKey)+"&SortBy=Name&SortOrder=Ascending";}
@@ -109,5 +123,6 @@ public final class MusicActivity extends TvActivity {
     @Override void appearanceChanged(){if(mainMenu!=null)mainMenu.setBackground(capsuleSurface(TvAppearance.surface(appearanceDark())));}
     private void deletePlaylist(JSONObject list){AlertDialog dialog=dialogBuilder().setTitle("删除歌单“"+list.optString("Name")+"”？").setMessage("只删除歌单，保留音乐文件。").setPositiveButton("删除",(choice,index)->async(()->api.delete(api.userPath()+"/Music/Playlists/"+EtknApi.encode(list.optString("Key"))),result->load())).setNegativeButton("取消",null).create();dialog.show();themeDialog(dialog);}
     @Override protected void onResume(){super.onResume();MusicPlayback.get(this);if(loaded&&(tab.equals("recommended")||tab.equals("playlists")))load();loaded=true;}
+    @Override protected void onDestroy(){revision++;if(pageRequest!=null)pageRequest.cancel();super.onDestroy();}
     @Override void imageSizeChanged(){if(listing!=null||tab.equals("recommended"))load();}
 }

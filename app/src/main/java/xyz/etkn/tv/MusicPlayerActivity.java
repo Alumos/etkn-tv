@@ -10,11 +10,20 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import org.json.JSONObject;
 
-/** TV music uses a full-screen control panel with a persistent queue on the right. */
+/** Full-screen music controls with a switchable queue and lyrics panel. */
 public final class MusicPlayerActivity extends TvActivity implements MusicPlayback.Listener {
     private MusicPlayback playback;
     private TextView name,time,queueTitle,album,artist;
-    private Button pause,mode;
+    private Button pause,mode,lyricToggle;
+    private LinearLayout lyricPanel,queueFooter;
+    private TextView lyricStatus;
+    private ListView lyrics;
+    private BaseAdapter lyricAdapter;
+    private MusicLyrics lyricData=MusicLyrics.parse("");
+    private boolean lyricsOpen;
+    private int lyricRevision,lyricIndex=-1;
+    private String lyricKey="";
+    private android.os.CancellationSignal lyricRequest;
     private LinearLayout controls;
     private ImageView cover;
     private SeekBar seek;
@@ -41,7 +50,7 @@ public final class MusicPlayerActivity extends TvActivity implements MusicPlayba
         seek=new SeekBar(this);seek.setMax(1000);seek.setFocusable(false);seek.setFocusableInTouchMode(false);seek.setContentDescription("播放进度");left.addView(seek,new LinearLayout.LayoutParams(-1,dp(34)));
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){@Override public void onProgressChanged(SeekBar bar,int value,boolean user){if(user&&!updating)playback.seek(playback.duration()*value/1000);}@Override public void onStartTrackingTouch(SeekBar bar){}@Override public void onStopTrackingTouch(SeekBar bar){}});
         time=text("0:00 / 0:00",12,MUTED);time.setGravity(Gravity.CENTER);left.addView(time,new LinearLayout.LayoutParams(-1,dp(25)));
-        controls=row();controls.setGravity(Gravity.CENTER);controls.addView(control("previous","上一首",()->playback.next(-1,false)));pause=control("play","播放",()->playback.toggle());controls.addView(pause);controls.addView(control("next","下一首",()->playback.next(1,false)));mode=control("sequence","顺序播放",this::chooseMode);controls.addView(mode);controls.addView(control("playlist","保存到歌单",()->{JSONObject item=playback.queue.current();if(item!=null)MusicActions.playlist(this,item,()->{});}));left.addView(controls);
+        controls=row();controls.setGravity(Gravity.CENTER);controls.addView(control("previous","上一首",()->playback.next(-1,false)));pause=control("play","播放",()->playback.toggle());controls.addView(pause);controls.addView(control("next","下一首",()->playback.next(1,false)));mode=control("sequence","顺序播放",this::chooseMode);controls.addView(mode);controls.addView(control("playlist","保存到歌单",()->{JSONObject item=playback.queue.current();if(item!=null)MusicActions.playlist(this,item,()->{});}));lyricToggle=control("lyrics","显示歌词",this::toggleLyrics);controls.addView(lyricToggle);left.addView(controls);
         LinearLayout right=column();right.setPadding(dp(12),dp(10),dp(12),dp(8));LinearLayout.LayoutParams bounds=new LinearLayout.LayoutParams(0,-1,1);bounds.setMargins(dp(14),dp(8),dp(8),dp(8));body.addView(right,bounds);
         queueTitle=text("播放列表",19,TEXT);queueTitle.setPadding(0,0,0,dp(8));right.addView(queueTitle);
         queue=new ListView(this);queue.setDivider(null);queue.setDividerHeight(dp(10));queue.setPadding(dp(12),dp(12),dp(12),dp(12));queue.setClipChildren(true);queue.setClipToPadding(true);queue.setSelector(queueFocusSelector());queue.setOnFocusChangeListener((view,focused)->{android.graphics.drawable.Drawable selector=queue.getSelector();if(selector!=null)selector.setVisible(focused,false);});queue.setItemsCanFocus(false);queue.setCacheColorHint(android.graphics.Color.TRANSPARENT);right.addView(queue,new LinearLayout.LayoutParams(-1,0,1));
@@ -53,16 +62,54 @@ public final class MusicPlayerActivity extends TvActivity implements MusicPlayba
                 LinearLayout trailing=row();trailing.setGravity(Gravity.CENTER_VERTICAL);if(current&&playback.playing()){SpectrumIcon spectrum=new SpectrumIcon();spectrum.setContentDescription("正在播放");trailing.addView(spectrum,new LinearLayout.LayoutParams(dp(24),dp(24)));}
                 TextView duration=text(MusicViews.time(item.optLong("RunTimeTicks")/10000),13,MUTED);duration.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);duration.setSingleLine(true);duration.setMinWidth(dp(48));trailing.addView(duration);row.addView(trailing);return row;
             }};queue.setAdapter(adapter);queue.setOnItemClickListener((parent,view,index,id)->playback.playAt(index));queue.setOnItemLongClickListener((parent,view,index,id)->{queueActions(index);return true;});
-        more=control("load","加载后续歌曲",()->playback.loadMore());LinearLayout footer=row();footer.setGravity(Gravity.CENTER);footer.addView(more);right.addView(footer);
+        more=control("load","加载后续歌曲",()->playback.loadMore());queueFooter=row();queueFooter.setGravity(Gravity.CENTER);queueFooter.addView(more);right.addView(queueFooter);
+        lyricPanel=column();lyricPanel.setVisibility(View.GONE);right.addView(lyricPanel,new LinearLayout.LayoutParams(-1,0,1));
+        lyricStatus=text("",14,MUTED);lyricStatus.setGravity(Gravity.CENTER);lyricPanel.addView(lyricStatus);
+        lyrics=new ListView(this);lyrics.setDivider(null);lyrics.setPadding(dp(12),dp(12),dp(12),dp(12));lyrics.setClipToPadding(true);lyrics.setSelector(queueFocusSelector());lyrics.setItemsCanFocus(false);lyrics.setCacheColorHint(android.graphics.Color.TRANSPARENT);lyricPanel.addView(lyrics,new LinearLayout.LayoutParams(-1,0,1));
+        lyricAdapter=new BaseAdapter(){@Override public int getCount(){return lyricData.lines.size();}@Override public Object getItem(int position){return lyricData.lines.get(position);}@Override public long getItemId(int position){return position;}
+            @Override public View getView(int position,View recycled,ViewGroup parent){TextView line=text(lyricData.lines.get(position).text,position==lyricIndex?21:18,position==lyricIndex?ACCENT:TEXT);line.setGravity(Gravity.CENTER);line.setMinHeight(dp(56));line.setPadding(dp(10),dp(14),dp(10),dp(14));line.setTypeface(null,position==lyricIndex?Typeface.BOLD:Typeface.NORMAL);return line;}};
+        lyrics.setAdapter(lyricAdapter);lyrics.setOnItemClickListener((parent,view,index,id)->{if(lyricData.synced)playback.seek(lyricData.lines.get(index).start);});
         status=text("",12,MUTED);status.setMaxLines(2);root.addView(status);setContentView(root);changed();pause.requestFocus();
     }
     @Override public void changed(){
         if(isDestroyed()||name==null)return;updating=true;
         JSONObject item=playback.queue.current();if(item!=shown){shown=item;if(item!=null){name.setText(item.optString("Name"));album.setText("专辑 · "+item.optString("Album","未知专辑"));artist.setText("歌手 · "+MusicViews.artists(item));cover.setImageDrawable(null);Images.load(api,MusicViews.artwork(api,item,600),cover);}else{name.setText("播放列表为空");cover.setImageDrawable(null);}}
         controlIcon(pause,playback.playing()?"pause":"play",playback.playing()?"暂停":playback.loading()?"正在加载":"播放");controlIcon(mode,new String[]{"sequence","shuffle","repeat","repeat_one"}[playback.queue.mode],MusicQueue.MODES[playback.queue.mode]);status.setText(playback.message);time.setText(MusicViews.time(playback.position())+" / "+MusicViews.time(playback.duration()));seek.setEnabled(playback.duration()>0);seek.setProgress(playback.duration()>0?(int)(playback.position()*1000/playback.duration()):0);
-        queueTitle.setText("播放列表  "+playback.queue.items.size()+(playback.hasMore()?" / "+playback.queue.total:"")+" 首");more.setVisibility(playback.hasMore()?View.VISIBLE:View.GONE);more.setEnabled(!playback.moreLoading());more.setContentDescription(playback.moreLoading()?"正在加载":"加载后续歌曲");
+        queueTitle.setText(lyricsOpen?"歌词":"播放列表  "+playback.queue.items.size()+(playback.hasMore()?" / "+playback.queue.total:"")+" 首");more.setVisibility(playback.hasMore()?View.VISIBLE:View.GONE);more.setEnabled(!playback.moreLoading());more.setContentDescription(playback.moreLoading()?"正在加载":"加载后续歌曲");
         boolean playingNow=playback.playing();if(queueSize!=playback.queue.items.size()||playingIndex!=playback.queue.index||wasPlaying!=playingNow){queueSize=playback.queue.items.size();playingIndex=playback.queue.index;wasPlaying=playingNow;adapter.notifyDataSetChanged();if(!queue.hasFocus()&&playingIndex>=0)queue.setSelection(playingIndex);}
-        updating=false;
+        updateLyrics();updating=false;
+    }
+    private void toggleLyrics(){
+        lyricsOpen=!lyricsOpen;cancelLyrics();lyricKey="";
+        queue.setVisibility(lyricsOpen?View.GONE:View.VISIBLE);queueFooter.setVisibility(lyricsOpen?View.GONE:View.VISIBLE);lyricPanel.setVisibility(lyricsOpen?View.VISIBLE:View.GONE);
+        controlIcon(lyricToggle,lyricsOpen?"queue":"lyrics",lyricsOpen?"显示播放列表":"显示歌词");changed();
+    }
+    private void cancelLyrics(){lyricRevision++;if(lyricRequest!=null)lyricRequest.cancel();lyricRequest=null;}
+    private boolean currentLyrics(int revision,android.os.CancellationSignal cancellation){return revision==lyricRevision&&!cancellation.isCanceled()&&lyricsOpen&&!isFinishing()&&!isDestroyed()&&TvAppearance.sameSession(playback.api,playback.api.userId);}
+    private void updateLyrics(){
+        if(!lyricsOpen)return;JSONObject item=playback.queue.current();String source=playback.sourceId();String key=item==null||source.isEmpty()?"":item.optString("Id")+"/"+source;
+        if(!key.equals(lyricKey)){
+            cancelLyrics();lyricKey=key;lyricData=MusicLyrics.parse("");lyricIndex=-1;lyricAdapter.notifyDataSetChanged();
+            if(!key.isEmpty())loadLyrics(item.optString("Id"),source);
+        }
+        if(key.isEmpty()){lyricStatus.setText(item==null?"暂无歌曲":"等待音乐加载…");lyricStatus.setVisibility(View.VISIBLE);}
+        int index=lyricData.current(playback.position());if(index!=lyricIndex){lyricIndex=index;lyricAdapter.notifyDataSetChanged();if(index>=0&&!lyrics.hasFocus())lyrics.setSelectionFromTop(index,lyrics.getHeight()/3);}
+    }
+    private void loadLyrics(String item,String source){
+        int revision=lyricRevision;android.os.CancellationSignal cancellation=new android.os.CancellationSignal();lyricRequest=cancellation;
+        lyricStatus.setText("正在加载歌词…");lyricStatus.setVisibility(View.VISIBLE);
+        String path="/api/tv/Music/"+EtknApi.encode(item)+"/Lyrics?MediaSourceId="+EtknApi.encode(source);
+        IO.execute(()->{try{
+            JSONObject result=playback.api.get(path,cancellation);cancellation.throwIfCanceled();
+            if(result.optString("text").isEmpty()){
+                if(!TvAppearance.sameSession(playback.api,playback.api.userId))return;
+                result=playback.api.post(path,new JSONObject(),cancellation);
+            }
+            MusicLyrics data=MusicLyrics.parse(result.optString("text"));runOnUiThread(()->{
+                if(!currentLyrics(revision,cancellation))return;lyricRequest=null;lyricData=data;lyricIndex=-1;lyricAdapter.notifyDataSetChanged();lyrics.setSelection(0);
+                lyricStatus.setText(data.lines.isEmpty()?"暂无歌词":"");lyricStatus.setVisibility(data.lines.isEmpty()?View.VISIBLE:View.GONE);updateLyrics();
+            });
+        }catch(Exception error){runOnUiThread(()->{if(!currentLyrics(revision,cancellation))return;lyricRequest=null;lyricStatus.setText(error instanceof EtknApi.AuthException?"登录已过期，请重新登录":(error.getMessage()==null?"歌词加载失败":error.getMessage())+"，重新打开可重试");lyricStatus.setVisibility(View.VISIBLE);});}});
     }
     private final class SpectrumIcon extends View {
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -81,7 +128,7 @@ public final class MusicPlayerActivity extends TvActivity implements MusicPlayba
     private void queueActions(int index){if(index<0||index>=playback.queue.items.size())return;JSONObject item=playback.queue.items.get(index);AlertDialog dialog=dialogBuilder().setTitle(item.optString("Name")).setItems(new String[]{"立即播放","保存到歌单","移出播放列表"},(choice,action)->{if(action==0)playback.playAt(index);else if(action==1)MusicActions.playlist(this,item,()->{});else playback.remove(index);}).setNegativeButton("取消",null).create();dialog.show();themeDialog(dialog);}
     @Override public boolean dispatchKeyEvent(KeyEvent event){int key=event.getKeyCode();boolean media=key==KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE||key==KeyEvent.KEYCODE_MEDIA_PLAY||key==KeyEvent.KEYCODE_MEDIA_PAUSE||key==KeyEvent.KEYCODE_MEDIA_NEXT||key==KeyEvent.KEYCODE_MEDIA_PREVIOUS||key==KeyEvent.KEYCODE_MEDIA_STOP||key==KeyEvent.KEYCODE_MEDIA_FAST_FORWARD||key==KeyEvent.KEYCODE_MEDIA_REWIND;if(media){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0){if(key==KeyEvent.KEYCODE_MEDIA_NEXT)playback.next(1,false);else if(key==KeyEvent.KEYCODE_MEDIA_PREVIOUS)playback.next(-1,false);else if(key==KeyEvent.KEYCODE_MEDIA_STOP){MusicPlayback.stop();finish();}else if(key==KeyEvent.KEYCODE_MEDIA_FAST_FORWARD||key==KeyEvent.KEYCODE_MEDIA_REWIND)playback.seek(playback.position()+(key==KeyEvent.KEYCODE_MEDIA_FAST_FORWARD?10000:-10000));else if(key==KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE||key==KeyEvent.KEYCODE_MEDIA_PLAY&&!playback.playing()||key==KeyEvent.KEYCODE_MEDIA_PAUSE&&playback.playing())playback.toggle();}return true;}if(key==KeyEvent.KEYCODE_MENU&&queue.hasFocus()){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0)queueActions(queue.getSelectedItemPosition());return true;}return super.dispatchKeyEvent(event);}
     @Override protected void onResume(){super.onResume();if(playback!=null){playback.addListener(this);changed();}}
-    @Override protected void onPause(){if(playback!=null)playback.removeListener(this);super.onPause();}
-    @Override public void onBackPressed(){MusicPlayback.stop();super.onBackPressed();}
-    @Override void appearanceChanged(){if(adapter!=null)adapter.notifyDataSetChanged();if(controls!=null)for(int i=0;i<controls.getChildCount();i++)tintControl((Button)controls.getChildAt(i));if(more!=null)tintControl(more);}
+    @Override protected void onPause(){cancelLyrics();lyricKey="";if(playback!=null)playback.removeListener(this);super.onPause();}
+    @Override public void onBackPressed(){cancelLyrics();MusicPlayback.stop();super.onBackPressed();}
+    @Override void appearanceChanged(){if(adapter!=null)adapter.notifyDataSetChanged();if(lyricAdapter!=null)lyricAdapter.notifyDataSetChanged();if(controls!=null)for(int i=0;i<controls.getChildCount();i++)tintControl((Button)controls.getChildAt(i));if(more!=null)tintControl(more);}
 }
