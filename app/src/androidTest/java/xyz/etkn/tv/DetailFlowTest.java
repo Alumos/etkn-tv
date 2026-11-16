@@ -58,7 +58,15 @@ public class DetailFlowTest {
             server.logoEnabled=false;server.portraitLogo=true;open(server,"movie-single");
             TextView title=(TextView)field(detail,"detailTitle");ImageView logo=(ImageView)field(detail,"detailLogo");View copy=(View)field(detail,"detailCopy");
             assertEquals(View.VISIBLE,title.getVisibility());assertEquals(View.GONE,logo.getVisibility());
-            int[] controlY={0};onMain(()->{controlY[0]=((View)field(detail,"playButton")).getTop();assertEquals(copy.getWidth()/4f,((View)title.getParent()).getHeight(),2f);});
+            int[] controlY={0};onMain(()->{controlY[0]=((View)field(detail,"playButton")).getTop();assertEquals(copy.getWidth()/4f,((View)title.getParent()).getHeight(),2f);
+                assertEquals(androidx.core.content.res.ResourcesCompat.getFont(detail,R.font.source_han_sans_cn_heavy),title.getTypeface());
+                assertTrue(title.getPaint().hasGlyph("繁"));assertTrue(title.getPaint().hasGlyph("简"));
+            });
+            for(String name:new String[]{"流浪地球", "繁體中文與简体中文的超長電影片名測試", "A Very Long English Movie Title With Several Words"}){
+                onMain(()->title.setText(name));settle();
+                onMain(()->{assertTrue(title.getLayout().getLineCount()<=2);assertEquals(copy.getWidth()/4f,((View)title.getParent()).getHeight(),2f);assertEquals(controlY[0],((View)field(detail,"playButton")).getTop());});
+                screenshot(name.equals("流浪地球")?"detail-heavy-title-chinese.png":name.startsWith("A ")?"detail-heavy-title-english.png":"detail-heavy-title-long-chinese.png");
+            }
             java.lang.reflect.Method update=DetailActivity.class.getDeclaredMethod("applyDetail",JSONObject.class);update.setAccessible(true);
             JSONObject changed=new JSONObject(((JSONObject)field(detail,"item")).toString()).put("UseLogoAsTitle",true);
             onMain(()->{try{update.invoke(detail,changed);}catch(Exception error){throw new AssertionError(error);}});
@@ -67,6 +75,28 @@ public class DetailFlowTest {
             changed.put("UseLogoAsTitle",false);onMain(()->{try{update.invoke(detail,changed);}catch(Exception error){throw new AssertionError(error);}});
             await(()->title.isShown());assertEquals(View.GONE,logo.getVisibility());
             server.logoEnabled=true;open(server,"movie-multi");assertTrue(((View)field(detail,"detailTitle")).isShown());
+        }finally{cleanup();}
+    }
+    @Test public void detailHidesMissingRatingsAndKeepsScoresLocal()throws Exception{
+        try(Fixture server=new Fixture()){
+            server.logoEnabled=false;open(server,"movie-single");
+            for(String key:new String[]{"detailDouban","detailImdb","detailTmdb"})assertTrue(((View)field(detail,key)).isShown());
+            java.lang.reflect.Method update=DetailActivity.class.getDeclaredMethod("applyDetail",JSONObject.class);update.setAccessible(true);
+            JSONObject changed=new JSONObject(((JSONObject)field(detail,"item")).toString()).put("DoubanRating",0).put("IMDbRating","N/A").put("TMDbRating",JSONObject.NULL).put("CriticRating",JSONObject.NULL).put("ExternalUrls",new JSONArray().put(new JSONObject().put("Name","IMDb").put("Url","https://www.imdb.com/title/tt0000000")));
+            onMain(()->{try{update.invoke(detail,changed);}catch(Exception error){throw new AssertionError(error);}});settle();
+            for(String key:new String[]{"detailDouban","detailImdb","detailTmdb","detailTomatoes","detailDoubanIcon","detailImdbIcon","detailTmdbIcon","detailTomatoIcon"})assertEquals(key,View.GONE,((View)field(detail,key)).getVisibility());
+            assertEquals(View.GONE,((View)field(detail,"ratingScroll")).getVisibility());
+            screenshot("detail-no-ratings.png");
+            changed.put("IMDbRating",7.9).put("CriticRating",0);
+            onMain(()->{try{update.invoke(detail,changed);}catch(Exception error){throw new AssertionError(error);}});settle();
+            for(String key:new String[]{"detailImdb","detailImdbIcon","detailTomatoes","detailTomatoIcon"}){
+                View score=(View)field(detail,key);assertTrue(score.isShown());assertFalse(score.isFocusable());assertFalse(score.isClickable());
+            }
+            assertTrue(((View)field(detail,"ratingScroll")).isShown());
+            assertEquals(" 0%    ",((TextView)field(detail,"detailTomatoes")).getText().toString());
+            assertEquals(View.GONE,((View)field(detail,"detailDoubanIcon")).getVisibility());assertEquals(View.GONE,((View)field(detail,"detailTmdbIcon")).getVisibility());
+            assertNull(button("IMDb"));assertNull(button("TMDb"));assertNull(button("豆瓣"));assertNull(button("外部链接"));
+            screenshot("detail-partial-ratings.png");
         }finally{cleanup();}
     }
     @Test public void webDetailClampsOverviewToSixLinesAndRetainsTrackNavigation()throws Exception{

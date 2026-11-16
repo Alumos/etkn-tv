@@ -39,7 +39,7 @@ public final class DetailActivity extends TvActivity {
     private TextView detailVideoInfo;
     private Button overviewMore;
     private String renderedLogo="";
-    private ImageView detailTomatoIcon;
+    private ImageView detailTomatoIcon,detailDoubanIcon,detailImdbIcon,detailTmdbIcon;
     private TextView detailTitle,detailDouban,detailTmdb,detailImdb,detailTomatoes,detailYear,detailDuration,detailRating,detailCategories,detailOverview,detailTagline;
     private Button cloudButton,episodesButton;
     private boolean episodePicker;
@@ -79,7 +79,7 @@ public final class DetailActivity extends TvActivity {
     private Button seriesButton;
     private final List<JSONObject> itemCollections=new ArrayList<>();
     private String renderedFacets="";
-    private HorizontalScrollView menu,castScroll;
+    private HorizontalScrollView menu,castScroll,ratingScroll;
     private View castEntry;
     private View previousFocus;
     private int mainMenuTransitionKey;
@@ -173,18 +173,18 @@ public final class DetailActivity extends TvActivity {
         detailCopy=column();content.addView(detailCopy,new LinearLayout.LayoutParams(dp(titleWidth),-2));
         String seriesId=item.optString("SeriesId");if(!seriesId.isEmpty()){Button parent=compactButton(item.optString("SeriesName"),()->startActivity(new Intent(this,DetailActivity.class).putExtra("id",seriesId)));detailCopy.addView(parent);}
         FrameLayout identity=new FrameLayout(this);
-        TextView title=text(EtknApi.title(item),26,Color.WHITE);detailTitle=title;title.setTypeface(null,Typeface.BOLD);title.setGravity(Gravity.BOTTOM);title.setPadding(0,0,0,0);title.setMaxLines(2);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setVisibility(View.VISIBLE);
+        TextView title=text(EtknApi.title(item),26,Color.WHITE);detailTitle=title;title.setTypeface(androidx.core.content.res.ResourcesCompat.getFont(this,R.font.source_han_sans_cn_heavy));title.setGravity(Gravity.BOTTOM);title.setPadding(0,0,0,0);title.setMaxLines(2);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setVisibility(View.VISIBLE);
         identity.addView(title,new FrameLayout.LayoutParams(-1,-1));
         ImageView logo=new ImageView(this);detailLogo=logo;logo.setScaleType(ImageView.ScaleType.MATRIX);logo.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->fitDetailLogo());logo.setVisibility(View.GONE);
         identity.addView(logo,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout.LayoutParams identityBounds=new LinearLayout.LayoutParams(-1,dp(titleWidth/4));identityBounds.bottomMargin=dp(16);detailCopy.addView(identity,identityBounds);
         updateDetailLogo();
         LinearLayout metadata=row();metadata.setGravity(Gravity.CENTER_VERTICAL);
-        ImageView douban=new ImageView(this);douban.setImageDrawable(doubanMark());douban.setPadding(dp(3),dp(3),dp(3),dp(3));douban.setBackground(shape(Color.rgb(0,119,34),0));metadata.addView(douban,new LinearLayout.LayoutParams(dp(21),dp(21)));
+        ImageView douban=new ImageView(this);detailDoubanIcon=douban;douban.setImageDrawable(doubanMark());douban.setPadding(dp(3),dp(3),dp(3),dp(3));douban.setBackground(shape(Color.rgb(0,119,34),0));metadata.addView(douban,new LinearLayout.LayoutParams(dp(21),dp(21)));
         detailDouban=meta("",Color.WHITE);metadata.addView(detailDouban);
-        ImageView imdb=new ImageView(this);imdb.setImageDrawable(imdbMark());imdb.setContentDescription("IMDb评分");metadata.addView(imdb,new LinearLayout.LayoutParams(dp(21),dp(21)));
+        ImageView imdb=new ImageView(this);detailImdbIcon=imdb;imdb.setImageDrawable(imdbMark());imdb.setContentDescription("IMDb评分");metadata.addView(imdb,new LinearLayout.LayoutParams(dp(21),dp(21)));
         detailImdb=meta("",Color.WHITE);metadata.addView(detailImdb);
-        ImageView tmdb=new ImageView(this);tmdb.setImageDrawable(tmdbMark());metadata.addView(tmdb,new LinearLayout.LayoutParams(dp(21),dp(21)));
+        ImageView tmdb=new ImageView(this);detailTmdbIcon=tmdb;tmdb.setImageDrawable(tmdbMark());metadata.addView(tmdb,new LinearLayout.LayoutParams(dp(21),dp(21)));
         detailTmdb=meta("",Color.rgb(255,205,75));metadata.addView(detailTmdb);
         detailTomatoIcon=new ImageView(this);detailTomatoIcon.setContentDescription("烂番茄评分");metadata.addView(detailTomatoIcon,new LinearLayout.LayoutParams(dp(21),dp(21)));
         detailTomatoes=meta("",Color.WHITE);metadata.addView(detailTomatoes);
@@ -194,7 +194,7 @@ public final class DetailActivity extends TvActivity {
         seriesButton=compactButton("系列",this::openItemCollection);seriesButton.setContentDescription("所属合集");seriesButton.setVisibility(View.GONE);
         facetButtons=row();facetButtons.setGravity(Gravity.CENTER_VERTICAL);facts.addView(seriesButton);
         studioButtons=row();studioButtons.setGravity(Gravity.CENTER_VERTICAL);facts.addView(studioButtons);
-        HorizontalScrollView metadataScroll=new FocusScroll.Row(this);metadataScroll.setHorizontalScrollBarEnabled(false);metadataScroll.addView(metadata);detailCopy.addView(metadataScroll,new LinearLayout.LayoutParams(-1,dp(36)));
+        HorizontalScrollView metadataScroll=new FocusScroll.Row(this);ratingScroll=metadataScroll;metadataScroll.setHorizontalScrollBarEnabled(false);metadataScroll.addView(metadata);detailCopy.addView(metadataScroll,new LinearLayout.LayoutParams(-1,dp(36)));
         HorizontalScrollView factsScroll=new FocusScroll.Row(this);factsScroll.setHorizontalScrollBarEnabled(false);factsScroll.addView(facts);detailCopy.addView(factsScroll,new LinearLayout.LayoutParams(-1,dp(36)));
         HorizontalScrollView facetScroll=new FocusScroll.Row(this);facetScroll.setHorizontalScrollBarEnabled(false);facetScroll.addView(facetButtons);detailCopy.addView(facetScroll,new LinearLayout.LayoutParams(-1,dp(36)));
         detailCategories=text("",14,MUTED);detailCopy.addView(detailCategories);
@@ -251,10 +251,15 @@ public final class DetailActivity extends TvActivity {
         if(!truncated&&overviewMore.hasFocus())playButton.requestFocus();overviewMore.setVisibility(truncated?View.VISIBLE:View.GONE);
     }
     private TextView meta(String value,int color){TextView label=text(value,13,color);label.setGravity(Gravity.CENTER_VERTICAL);return label;}
+    private void updateRating(TextView label,ImageView icon,String field){
+        double value=item.optDouble(field,Double.NaN);boolean present=Double.isFinite(value)&&value>0;
+        label.setText(present?" "+DetailPresentation.rating(item,field)+"    ":"");label.setVisibility(present?View.VISIBLE:View.GONE);icon.setVisibility(label.getVisibility());
+    }
     private void updateMetadata(){
         if(episodePicker){detailTitle.setText(EtknApi.title(item)+" · 选集");return;}
-        detailTitle.setText("Episode".equals(item.optString("Type"))&&item.has("IndexNumber")?DetailPresentation.episodeNumber(item)+" · "+EtknApi.title(item):EtknApi.title(item));detailDouban.setText(" "+DetailPresentation.rating(item,"DoubanRating")+"    ");detailTmdb.setText(" "+DetailPresentation.rating(item,"TMDbRating")+"    ");detailImdb.setText(" "+DetailPresentation.rating(item,"IMDbRating")+"    ");
+        detailTitle.setText("Episode".equals(item.optString("Type"))&&item.has("IndexNumber")?DetailPresentation.episodeNumber(item)+" · "+EtknApi.title(item):EtknApi.title(item));updateRating(detailDouban,detailDoubanIcon,"DoubanRating");updateRating(detailTmdb,detailTmdbIcon,"TMDbRating");updateRating(detailImdb,detailImdbIcon,"IMDbRating");
         String tomato=DetailPresentation.tomatoRating(item);detailTomatoes.setText(" "+tomato+"    ");detailTomatoes.setVisibility(tomato.equals("–")?View.GONE:View.VISIBLE);detailTomatoIcon.setVisibility(detailTomatoes.getVisibility());detailTomatoIcon.setImageDrawable(tomatoMark(item));
+        ratingScroll.setVisibility(detailDouban.getVisibility()==View.VISIBLE||detailTmdb.getVisibility()==View.VISIBLE||detailImdb.getVisibility()==View.VISIBLE||detailTomatoes.getVisibility()==View.VISIBLE?View.VISIBLE:View.GONE);
         String year=item.optString("ProductionYear"),duration=DetailPresentation.duration(item.optLong("RunTimeTicks")),rating=DetailPresentation.contentRating(item),categories=DetailPresentation.categories(item);
         detailYear.setText(year+"    ");detailYear.setVisibility(year.isEmpty()?View.GONE:View.VISIBLE);detailDuration.setText(duration+"    ");detailDuration.setVisibility(duration.isEmpty()?View.GONE:View.VISIBLE);
         detailRating.setText(rating);detailRating.setVisibility(rating.isEmpty()?View.GONE:View.VISIBLE);detailCategories.setVisibility(View.GONE);renderFacets();
