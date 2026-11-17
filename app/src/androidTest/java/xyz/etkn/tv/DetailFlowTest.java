@@ -43,12 +43,14 @@ public class DetailFlowTest {
     private DetailActivity detail;
     @Test public void backdropAndLogoLoadTogetherWithoutFlashingTheFallbackTitle()throws Exception{
         try(Fixture server=new Fixture()){
-            server.holdIdentity=true;open(server,"movie-single");
+            server.holdIdentity=true;server.logoGate=new java.util.concurrent.CountDownLatch(1);open(server,"movie-single");
             assertTrue("背景请求已开始",server.backgroundRequested.await(5,java.util.concurrent.TimeUnit.SECONDS));
             assertTrue("Logo请求不能等待背景响应",server.logoRequested.await(5,java.util.concurrent.TimeUnit.SECONDS));
+            int[] buttonY={0};onMain(()->{assertEquals("Logo加载中不能先显示片名",View.INVISIBLE,((View)field(detail,"detailTitle")).getVisibility());buttonY[0]=((View)field(detail,"playButton")).getTop();});
+            server.logoGate.countDown();
             await(()->((View)field(detail,"detailLogo")).isShown());
-            onMain(()->{assertEquals(View.INVISIBLE,((View)field(detail,"detailTitle")).getVisibility());assertEquals("背景响应仍被阻塞",1L,server.backdropGate.getCount());});
-            screenshot("detail-logo-with-slow-backdrop.png");server.backdropGate.countDown();
+            onMain(()->{assertEquals(View.INVISIBLE,((View)field(detail,"detailTitle")).getVisibility());assertEquals(buttonY[0],((View)field(detail,"playButton")).getTop());assertEquals("背景响应仍被阻塞",1L,server.backdropGate.getCount());});
+            settle();screenshot("detail-logo-with-slow-backdrop.png");server.backdropGate.countDown();
             open(server,"movie-multi");await(()->((View)field(detail,"detailTitle")).isShown());
             onMain(()->assertEquals(View.GONE,((View)field(detail,"detailLogo")).getVisibility()));
         }finally{cleanup();}
@@ -71,10 +73,11 @@ public class DetailFlowTest {
             JSONObject changed=new JSONObject(((JSONObject)field(detail,"item")).toString()).put("UseLogoAsTitle",true);
             onMain(()->{try{update.invoke(detail,changed);}catch(Exception error){throw new AssertionError(error);}});
             await(()->logo.isShown());onMain(()->{assertEquals(View.INVISIBLE,title.getVisibility());assertEquals(controlY[0],((View)field(detail,"playButton")).getTop());float[] matrix=new float[9];logo.getImageMatrix().getValues(matrix);assertEquals(matrix[0],matrix[4],.001f);assertTrue(logo.getDrawable().getIntrinsicHeight()>logo.getDrawable().getIntrinsicWidth());});
-            screenshot("web-detail-portrait-logo.png");
+            onMain(()->{int padding=detail.dp(16);assertEquals(padding,logo.getPaddingLeft());assertEquals(padding,logo.getPaddingRight());assertEquals(padding,logo.getPaddingTop());assertEquals(padding,logo.getPaddingBottom());float[] matrix=new float[9];logo.getImageMatrix().getValues(matrix);assertEquals(logo.getHeight()-2*padding,logo.getDrawable().getIntrinsicHeight()*matrix[4],1f);assertTrue(logo.getDrawable().getIntrinsicWidth()*matrix[0]<=logo.getWidth()-2*padding);});
+            settle();screenshot("web-detail-portrait-logo.png");
             changed.put("UseLogoAsTitle",false);onMain(()->{try{update.invoke(detail,changed);}catch(Exception error){throw new AssertionError(error);}});
             await(()->title.isShown());assertEquals(View.GONE,logo.getVisibility());
-            server.logoEnabled=true;open(server,"movie-multi");assertTrue(((View)field(detail,"detailTitle")).isShown());
+            server.logoEnabled=true;open(server,"movie-multi");await(()->((View)field(detail,"detailTitle")).isShown());
         }finally{cleanup();}
     }
     @Test public void detailHidesMissingRatingsAndKeepsScoresLocal()throws Exception{
@@ -1756,6 +1759,7 @@ public class DetailFlowTest {
         volatile boolean placeholderDates,admin,favorite,watched,liveArtwork,changed,holdMetadata,slotLabels,versionUpdates,taglineFixture;
         volatile boolean logoEnabled=true,portraitLogo,longOverview;
         volatile boolean holdIdentity,pauseAvatar,brokenAvatar,holdPlayback,playbackInfoFailure,manyActors,emptySimilar;
+        volatile java.util.concurrent.CountDownLatch logoGate;
         volatile JSONObject appearance=new JSONObject();
         final java.util.concurrent.CountDownLatch playbackRequested=new java.util.concurrent.CountDownLatch(1),playbackGate=new java.util.concurrent.CountDownLatch(1);
         volatile int refreshStatusRequests;
@@ -1880,12 +1884,12 @@ public class DetailFlowTest {
                 byte[] portrait=null;if(portraitLogo&&path.contains("/Images/Logo")){android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(120,360,android.graphics.Bitmap.Config.ARGB_8888);bitmap.eraseColor(android.graphics.Color.CYAN);java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,bytes);portrait=bytes.toByteArray();bitmap.recycle();}
                 byte[] body=portrait!=null?portrait:video?media:subtitle?(pgsSubtitle?PlaybackCompatibilityTest.supSample():"WEBVTT\n\n00:00:00.000 --> 00:00:20.000\nExternal synthetic subtitle\n".getBytes(StandardCharsets.UTF_8)):picture?(path.contains("tag=art2")?updatedImage:image):response(path).toString().getBytes(StandardCharsets.UTF_8);
                 if(holdMetadata&&!post&&!picture&&path.contains("/Users/")&&path.contains("/Items/")){metadataRequested.countDown();metadataGate.await(15,java.util.concurrent.TimeUnit.SECONDS);}
-                if(holdIdentity&&path.contains("/Items/movie-single/Images/")){if(path.contains("/Backdrop")){backgroundRequested.countDown();backdropGate.await(15,java.util.concurrent.TimeUnit.SECONDS);}if(path.contains("/Logo"))logoRequested.countDown();}
+                if(holdIdentity&&path.contains("/Items/movie-single/Images/")){if(path.contains("/Backdrop")){backgroundRequested.countDown();backdropGate.await(15,java.util.concurrent.TimeUnit.SECONDS);}if(path.contains("/Logo")){logoRequested.countDown();if(logoGate!=null)logoGate.await(15,java.util.concurrent.TimeUnit.SECONDS);}}
                 boolean partial=range>0||discMedia&&video;String code=(danmakuFailure&&path.contains("/Danmaku?")||playbackInfoFailure&&path.contains("/PlaybackInfo")||failNext&&(path.contains("/NextEpisode")||path.contains("/Episodes")&&!path.contains("Fields="))||failEpisodePage&&path.contains("/EpisodePage"))?"500 Internal Server Error":missing?"404 Not Found":partial?"206 Partial Content":"200 OK";int start=video?range:0;
                 String headers="HTTP/1.1 "+code+"\r\nContent-Type: "+(video?"video/x-matroska":subtitle?"text/vtt":picture?"image/jpeg":"application/json")+"\r\nContent-Length: "+(body.length-start)+"\r\n"+(partial?"Content-Range: bytes "+start+"-"+(body.length-1)+"/"+body.length+"\r\n":"")+"Connection: close\r\n\r\n";
                 OutputStream output=client.getOutputStream();output.write(headers.getBytes(StandardCharsets.US_ASCII));output.write(body,start,body.length-start);
             }
         }
-        @Override public void close()throws IOException{closed=true;playbackGate.countDown();backdropGate.countDown();updateGate.countDown();metadataGate.countDown();if(translationGate!=null)translationGate.countDown();if(danmakuReportGate!=null)danmakuReportGate.countDown();if(danmakuGate!=null)danmakuGate.countDown();socket.close();}
+        @Override public void close()throws IOException{closed=true;playbackGate.countDown();backdropGate.countDown();if(logoGate!=null)logoGate.countDown();updateGate.countDown();metadataGate.countDown();if(translationGate!=null)translationGate.countDown();if(danmakuReportGate!=null)danmakuReportGate.countDown();if(danmakuGate!=null)danmakuGate.countDown();socket.close();}
     }
 }

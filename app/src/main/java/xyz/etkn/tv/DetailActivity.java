@@ -175,7 +175,7 @@ public final class DetailActivity extends TvActivity {
         FrameLayout identity=new FrameLayout(this);
         TextView title=text(EtknApi.title(item),26,Color.WHITE);detailTitle=title;title.setTypeface(androidx.core.content.res.ResourcesCompat.getFont(this,R.font.source_han_sans_cn_heavy));title.setGravity(Gravity.BOTTOM);title.setPadding(0,0,0,0);title.setMaxLines(2);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setVisibility(View.VISIBLE);
         identity.addView(title,new FrameLayout.LayoutParams(-1,-1));
-        ImageView logo=new ImageView(this);detailLogo=logo;logo.setScaleType(ImageView.ScaleType.MATRIX);logo.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->fitDetailLogo());logo.setVisibility(View.GONE);
+        ImageView logo=new ImageView(this);detailLogo=logo;logo.setScaleType(ImageView.ScaleType.MATRIX);logo.setPadding(dp(16),dp(16),dp(16),dp(16));logo.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->fitDetailLogo());logo.setVisibility(View.GONE);
         identity.addView(logo,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout.LayoutParams identityBounds=new LinearLayout.LayoutParams(-1,dp(titleWidth/4));identityBounds.bottomMargin=dp(16);detailCopy.addView(identity,identityBounds);
         updateDetailLogo();
@@ -238,13 +238,14 @@ public final class DetailActivity extends TvActivity {
     }
     private void updateDetailLogo(){
         String url=item.optBoolean("UseLogoAsTitle")?api.artwork(item,"Logo",720):"";
-        if(url.equals(renderedLogo))return;renderedLogo=url;detailLogo.setTag(null);detailLogo.setVisibility(View.GONE);detailTitle.setVisibility(View.VISIBLE);
+        if(url.equals(renderedLogo))return;renderedLogo=url;detailLogo.setTag(null);detailLogo.setVisibility(View.GONE);detailTitle.setVisibility(url.isEmpty()?View.VISIBLE:View.INVISIBLE);
         if(!url.isEmpty())Images.backdrop(api,url,detailLogo,ok->{fitDetailLogo();detailLogo.setVisibility(ok?View.VISIBLE:View.GONE);detailTitle.setVisibility(ok?View.INVISIBLE:View.VISIBLE);});
     }
     private void fitDetailLogo(){
         android.graphics.drawable.Drawable image=detailLogo.getDrawable();if(image==null||image.getIntrinsicWidth()<=0||image.getIntrinsicHeight()<=0)return;
-        float scale=Math.min((float)detailLogo.getWidth()/image.getIntrinsicWidth(),(float)detailLogo.getHeight()/image.getIntrinsicHeight());
-        android.graphics.Matrix matrix=new android.graphics.Matrix();matrix.setScale(scale,scale);matrix.postTranslate(0,detailLogo.getHeight()-image.getIntrinsicHeight()*scale);detailLogo.setImageMatrix(matrix);
+        int width=detailLogo.getWidth()-detailLogo.getPaddingLeft()-detailLogo.getPaddingRight(),height=detailLogo.getHeight()-detailLogo.getPaddingTop()-detailLogo.getPaddingBottom();if(width<=0||height<=0)return;
+        float scale=Math.min((float)width/image.getIntrinsicWidth(),(float)height/image.getIntrinsicHeight());
+        android.graphics.Matrix matrix=new android.graphics.Matrix();matrix.setScale(scale,scale);matrix.postTranslate(0,height-image.getIntrinsicHeight()*scale);detailLogo.setImageMatrix(matrix);
     }
     private void updateOverviewMore(){
         android.text.Layout layout=detailOverview.getLayout();boolean truncated=layout!=null&&layout.getLineCount()>0&&layout.getEllipsisCount(layout.getLineCount()-1)>0;

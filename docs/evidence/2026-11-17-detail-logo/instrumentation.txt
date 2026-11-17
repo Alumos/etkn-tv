@@ -1,0 +1,6 @@
+
+xyz.etkn.tv.DetailFlowTest:..
+
+Time: 23.437
+
+OK (2 tests)
