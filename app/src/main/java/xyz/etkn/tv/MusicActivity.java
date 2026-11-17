@@ -10,8 +10,8 @@ import org.json.*;
 import java.util.*;
 
 public final class MusicActivity extends TvActivity {
-    private static final String[] TABS={"recommended","albums","artists","folders","playlists"};
-    private static final String[] LABELS={"推荐","专辑","歌手","文件夹","歌单"};
+    private static final String[] TABS={"recommended","albums","artists","songs","folders","playlists"};
+    private static final String[] LABELS={"推荐","专辑","歌手","歌曲","文件夹","歌单"};
     private String parent="",tab="recommended",key="",title="音乐";
     private final List<JSONObject> tracks=new ArrayList<>();
     private int revision,offset,total;
@@ -45,14 +45,14 @@ public final class MusicActivity extends TvActivity {
         load();
     }
     private static String value(Intent intent,String key,String fallback){String value=intent.getStringExtra(key);return value==null?fallback:value;}
-    private String path(){boolean newest=key.isEmpty()&&(tab.equals("albums")||tab.equals("artists"));return api.userPath()+"/Music?ParentId="+EtknApi.encode(parent)+"&Tab="+tab+"&Key="+EtknApi.encode(key)+(newest?"&SortBy=DateCreated&SortOrder=Descending":"&SortBy=Name&SortOrder=Ascending")+(tracksOnly?"&Tracks=1":"");}
+    private String path(){boolean newest=key.isEmpty()&&(tab.equals("albums")||tab.equals("artists")||tab.equals("songs"));return api.userPath()+"/Music?ParentId="+EtknApi.encode(parent)+"&Tab="+tab+"&Key="+EtknApi.encode(key)+(newest?"&SortBy=DateCreated&SortOrder=Descending":"&SortBy=Name&SortOrder=Ascending")+(tracksOnly?"&Tracks=1":"");}
     private void load(){
         revision++;if(pageRequest!=null)pageRequest.cancel();pageRequest=null;offset=0;total=0;tracks.clear();artist=null;loading=false;pageFailed=false;listing=null;more=null;content.removeAllViews();status.setText("正在读取音乐…");
         for(int i=0;i<TABS.length;i++){Button choice=(Button)musicMenu.getChildAt(i);themeText(choice,TABS[i].equals(tab)?ACCENT:TEXT);choice.setTypeface(null,TABS[i].equals(tab)?android.graphics.Typeface.BOLD:android.graphics.Typeface.NORMAL);}
         if(tab.equals("recommended")){recommendations();return;}
         if(tab.equals("playlists")&&key.isEmpty()){playlists();return;}
         if(tab.equals("albums")&&!key.isEmpty()){playAlbum(key,title);return;}
-        listing=grid(content,tracksOnly||!key.isEmpty()&&!tab.equals("artists")?300:140,12,104);
+        listing=grid(content,tracksOnly||tab.equals("songs")||tab.equals("folders")||!key.isEmpty()&&!tab.equals("artists")?300:140,12,104);
         listing.setPadding(0,dp(8),0,dp(12));more=button("重试加载",this::page);more.setVisibility(View.GONE);content.addView(more);page();
     }
     private void recommendations(){int ticket=revision;async(()->api.get(path()+"&FrequentLimit="+Math.min(200,Math.max(6,shelfCapacity(300,12,88)*2))),result->{if(ticket!=revision)return;content.removeAllViews();status.setText("推荐音乐");
@@ -82,7 +82,7 @@ public final class MusicActivity extends TvActivity {
             loading=false;pageRequest=null;
             List<JSONObject> rows=EtknApi.rows(result);total=result.optInt("TotalRecordCount",start+rows.size());offset=start+rows.size();
             if(start==0){JSONObject info=result.optJSONObject("Artist");artist=info;if(info!=null&&!tracksOnly){LinearLayout header=column();header.setPadding(dp(12),dp(8),dp(12),dp(12));TextView bio=text(info.optString("Overview"),14,MUTED);bio.setMaxLines(4);header.addView(bio);header.addView(button("播放歌手全部歌曲",()->{tracksOnly=true;load();}));content.addView(header,0);}
-                JSONArray folders=result.optJSONArray("Folders");for(JSONObject folder:items(folders))MusicViews.card(this,listing,folder,()->openGroup(folder),false);
+                JSONArray folders=result.optJSONArray("Folders");if(folders!=null&&folders.length()>0){GridLayout folderGrid=grid(content,140,12,104);content.removeView(folderGrid);content.addView(folderGrid,0);for(JSONObject folder:items(folders))MusicViews.card(this,folderGrid,folder,()->openGroup(folder),false);}
             }
             for(JSONObject item:rows){boolean track=item.optString("Kind").isEmpty()&&"Audio".equals(item.optString("Type"));if(track)tracks.add(item);View card=MusicViews.card(this,listing,item,()->{if(track)play(item,tracks,path());else openGroup(item);},track);if(track)bindTrack(card,item);}
             if(rows.isEmpty())total=offset;

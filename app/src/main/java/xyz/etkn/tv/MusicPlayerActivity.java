@@ -69,7 +69,7 @@ public final class MusicPlayerActivity extends TvActivity implements MusicPlayba
         lyricAdapter=new BaseAdapter(){@Override public int getCount(){return lyricData.lines.size();}@Override public Object getItem(int position){return lyricData.lines.get(position);}@Override public long getItemId(int position){return position;}
             @Override public View getView(int position,View recycled,ViewGroup parent){TextView line=text(lyricData.lines.get(position).text,position==lyricIndex?21:18,position==lyricIndex?ACCENT:TEXT);line.setGravity(Gravity.CENTER);line.setMinHeight(dp(56));line.setPadding(dp(10),dp(14),dp(10),dp(14));line.setTypeface(null,position==lyricIndex?Typeface.BOLD:Typeface.NORMAL);return line;}};
         lyrics.setAdapter(lyricAdapter);lyrics.setOnItemClickListener((parent,view,index,id)->{if(lyricData.synced)playback.seek(lyricData.lines.get(index).start);});
-        status=text("",12,MUTED);status.setMaxLines(2);root.addView(status);setContentView(root);changed();pause.requestFocus();
+        status=text("",12,MUTED);status.setMaxLines(2);root.addView(status);setContentView(root);toggleLyrics();pause.requestFocus();
     }
     @Override public void changed(){
         if(isDestroyed()||name==null)return;updating=true;

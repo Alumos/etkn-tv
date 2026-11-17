@@ -26,7 +26,7 @@ final class MusicLyrics {
         for(String raw:text.replace("\r","").split("\n")){
             Matcher prefix=PREFIX.matcher(raw);
             if(!prefix.find()){String value=raw.replaceFirst("(?i)^\\[[a-z][\\w-]*:[^\\]]*\\]","").trim();if(!value.isEmpty())plain.add(new Line(0,value));continue;}
-            String content=raw.substring(prefix.end()).replaceAll("<"+TIME+">","").trim();Matcher stamp=STAMP.matcher(prefix.group());
+            String content=raw.substring(prefix.end()).replaceAll("<"+TIME+">","").trim();if(content.isEmpty())continue;Matcher stamp=STAMP.matcher(prefix.group());
             while(stamp.find()){
                 String fraction=stamp.group(3);long milliseconds=fraction==null?0:Long.parseLong((fraction+"00").substring(0,3));
                 long start=Long.parseLong(stamp.group(1))*60000+Long.parseLong(stamp.group(2))*1000+milliseconds;
