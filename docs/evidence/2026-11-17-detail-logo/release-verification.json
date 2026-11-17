@@ -1,0 +1,38 @@
+{
+  "releaseId": 448242227,
+  "version": "0.1.128",
+  "versionCode": 129,
+  "publishedAt": "2026-11-17T06:35:01Z",
+  "url": "https://github.com/hbq0405/etkn-tv/releases/tag/v0.1.128",
+  "sourceCommit": "19f97a9525f6ed4c6b2e3f603c5ac88c8ca9d02f",
+  "assets": {
+    "etkn-tv-0.1.128.apk": {
+      "size": 70082113,
+      "sha256": "80c3139d295a04d465c2707604c15c0ff0a3e2be2633cd9be978a38cb4278f5d",
+      "anonymousBytesEqual": true
+    },
+    "RELEASE_NOTES.md": {
+      "size": 149,
+      "sha256": "7247be307f73dcd2e4988a55183a439093a6a94c91cb608c508d27227b132d37",
+      "anonymousBytesEqual": true
+    },
+    "SHA256SUMS.txt": {
+      "size": 247,
+      "sha256": "3b00b668074ee23cd80401ec6de7742ea3faaa8dc746bd00448867146ea33fe2",
+      "anonymousBytesEqual": true
+    },
+    "update.json": {
+      "size": 461,
+      "sha256": "6679699a8805f5a6998c781d2a132a3297e7d73f57491a1aa1c63a57c5114f21",
+      "anonymousBytesEqual": true
+    }
+  },
+  "latestManifestEqual": true,
+  "notification": {
+    "runId": 44032289118,
+    "attempt": 1,
+    "conclusion": "success",
+    "messageId": 65302,
+    "receiptCount": 1
+  }
+}

@@ -1,6 +1,6 @@
 # TV 详情页 Logo 加载与安全边距
 
-日期：2026-11-17。版本保持 0.1.127／128，本轮没有发布。
+日期：2026-11-17。先以 0.1.127／128 完成本地修复验证，用户随后授权推送发版，正式交付 0.1.128／129。
 
 ## 修改
 
@@ -29,4 +29,16 @@ Logo 图像控件保留 MATRIX 等比缩放与左下对齐，新增 16dp 四边�
 - [竖版完整显示](evidence/2026-11-17-detail-logo/portrait.png)
 - [Web 与变体调查报告](D:/work/ETKvNext/docs/reports/2026-11-17-detail-logo-rendering.md)
 
-未执行推送、发布或真实电视验收。没有实际 Logo／背景网络前后测速，不能将首次变体生成作为全部速度差异的定论。不同宽高比在完整等比适配时仍有必要留白。
+没有实际 Logo／背景网络前后测速，不能将首次变体生成作为全部速度差异的定论。不同宽高比在完整等比适配时仍有必要留白。真实电视视觉与遥控器验收尚未覆盖。
+
+## 0.1.128 正式交付
+
+- 修复提交 `679ce42`，版本提交与正式发行源码 `19f97a9525f6ed4c6b2e3f603c5ac88c8ca9d02f`。main 与带中文说明的 `v0.1.128` 标签原子推送成功。
+- 正式构建、Lint、126 项单元测试再次通过；包名 `xyz.etkn.tv`、versionCode 129、versionName 0.1.128、minSdk 24／targetSdk 35，四 ABI 与原正式证书核验通过。
+- APK 大小 70,082,113 字节，SHA-256 `80c3139d295a04d465c2707604c15c0ff0a3e2be2633cd9be978a38cb4278f5d`。
+- 草稿源码、正文和四附件服务端摘要校验后正式发布，Release ID 448242227，2026-11-17 14:35:01 北京时间，latest=true、draft=false、prerelease=false。
+- Release：<https://github.com/hbq0405/etkn-tv/releases/tag/v0.1.128>。四个附件与本地原始字节一致；匿名 latest/download/update.json 也逐字节一致。
+- 既有 Telegram 发布工作流运行 44032289118，对应发行源码，attempt 1、success；真实送达回执恰好一条，message_id 65302，未重跑。
+- [发布与匿名下载证据](evidence/2026-11-17-detail-logo/release-verification.json)。正式附件保留在 `outputs/etkn-tv-0.1.128/`。
+
+ETKvNext 已按同一用户授权完成 Web 热更新，私有仓库未推送。发布后文档另作提交，不移动标签或替换已验收附件。
