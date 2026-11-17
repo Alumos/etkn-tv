@@ -404,11 +404,7 @@ abstract class TvActivity extends Activity {
         return new android.graphics.drawable.BitmapDrawable(getResources(),bitmap);
     }
     android.graphics.drawable.Drawable tomatoMark(org.json.JSONObject item){
-        if(DetailPresentation.rottenTomato(item))return getDrawable(R.drawable.rotten_tomato);
-        android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(30,30,android.graphics.Bitmap.Config.ARGB_8888);
-        android.graphics.Canvas canvas=new android.graphics.Canvas(bitmap);android.graphics.Paint paint=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);paint.setColor(Color.rgb(238,66,56));
-        canvas.drawPath(androidx.core.graphics.PathParser.createPathFromPathData("M15 8C2 4 1 28 15 28S28 4 15 8Z"),paint);paint.setColor(Color.rgb(64,163,75));canvas.drawPath(androidx.core.graphics.PathParser.createPathFromPathData("m15 11-8-5 7 1 2-6 2 6 6-1-9 5Z"),paint);
-        return new android.graphics.drawable.BitmapDrawable(getResources(),bitmap);
+        return getDrawable(DetailPresentation.rottenTomato(item)?R.drawable.rotten_tomato:R.drawable.fresh_tomato);
     }
     android.graphics.drawable.Drawable tmdbMark(){
         return getDrawable(R.drawable.tmdb_rating);
