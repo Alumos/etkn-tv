@@ -308,12 +308,16 @@ abstract class TvActivity extends Activity {
         return posterCard(grid,media,click,episodeCountMode,false);
     }
     View posterCard(GridLayout grid,org.json.JSONObject media,Runnable click,String episodeCountMode,boolean landscape){
+        return posterCard(grid,media,click,episodeCountMode,landscape,false);
+    }
+    View posterCard(GridLayout grid,org.json.JSONObject media,Runnable click,String episodeCountMode,boolean landscape,boolean videoLibrary){
+        boolean titleBelow=landscape&&videoLibrary;
         LinearLayout card=column();card.setFocusable(true);card.setClickable(true);card.setBackgroundColor(Color.TRANSPARENT);card.setOnClickListener(v->click.run());card.setClipChildren(false);card.setClipToPadding(false);grid.setClipChildren(false);grid.setClipToPadding(false);
         FrameLayout artwork=new FrameLayout(this);artwork.setBackground(shape(PANEL,0));artwork.setClipToOutline(true);shadow(artwork,4);artwork.setForeground(Images.border(dp(12)));ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);Images.rounded(poster,dp(9));artwork.addView(poster,new FrameLayout.LayoutParams(-1,-1));
-        boolean adaptive=isAdaptiveGrid(grid);int imageHeight=landscape?108:198,cardWidth=landscape?192:132,cardHeight=landscape?108:255,gap=landscape?12:6;float artRatio=landscape?9f/16f:1.5f;
+        boolean adaptive=isAdaptiveGrid(grid);int imageHeight=landscape?108:198,cardWidth=landscape?192:132,cardHeight=landscape?(titleBelow?133:108):255,gap=landscape?12:6;float artRatio=landscape?9f/16f:1.5f;
         card.addView(artwork,new LinearLayout.LayoutParams(-1,adaptive?dp(Math.round(cardWidth*artRatio)):imageDp(imageHeight)));
         android.graphics.drawable.GradientDrawable fade=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,new int[]{Color.TRANSPARENT,Color.argb(235,0,0,0)});
-        LinearLayout ratings=row();ratings.setGravity(android.view.Gravity.CENTER);ratings.setPadding(0,dp(17),0,dp(3));ratings.setBackground(fade);ratings.setVisibility("BoxSet".equals(media.optString("Type"))?View.GONE:View.VISIBLE);
+        LinearLayout ratings=row();ratings.setGravity(android.view.Gravity.CENTER);ratings.setPadding(0,dp(17),0,dp(3));ratings.setBackground(fade);ratings.setVisibility(videoLibrary||"BoxSet".equals(media.optString("Type"))?View.GONE:View.VISIBLE);
         FrameLayout.LayoutParams ratingBounds=new FrameLayout.LayoutParams(-1,dp(42),android.view.Gravity.BOTTOM);artwork.addView(ratings,ratingBounds);
         int scaleBaseWidthDp=landscape?192:132;
         java.util.List<Runnable> artworkScaleUpdates=new java.util.ArrayList<>();
@@ -332,9 +336,10 @@ abstract class TvActivity extends Activity {
         LinearLayout.LayoutParams tomatoIconSpace=new LinearLayout.LayoutParams(dp(18),dp(18));ratings.addView(tomatoIcon,tomatoIconSpace);
         TextView tomatoScore=text(tomato,11,Color.WHITE);tomatoScore.setPadding(0,0,0,0);tomatoScore.setGravity(android.view.Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams tomatoSpace=new LinearLayout.LayoutParams(-2,-1);ratings.addView(tomatoScore,tomatoSpace);
-        tomatoIcon.setVisibility(tomato.equals("–")?View.GONE:View.VISIBLE);tomatoScore.setVisibility(tomatoIcon.getVisibility());
-        TextView[] scoreTexts={douban,tmdb,imdb,tomatoScore};ImageView[] scoreIcons={doubanIcon,star,imdbIcon,tomatoIcon};
-        for(TextView value:scoreTexts)value.setSingleLine(true);
+        TextView[] scoreTexts={douban,imdb,tmdb,tomatoScore};ImageView[] scoreIcons={doubanIcon,imdbIcon,star,tomatoIcon};
+        boolean hasScore=false;
+        for(int i=0;i<scoreTexts.length;i++){boolean present=!videoLibrary&&!"–".contentEquals(scoreTexts[i].getText());scoreTexts[i].setSingleLine(true);scoreTexts[i].setVisibility(present?View.VISIBLE:View.GONE);scoreIcons[i].setVisibility(scoreTexts[i].getVisibility());hasScore|=present;}
+        if(!hasScore&&(ratingYear==null||ratingYear.getVisibility()==View.GONE))ratings.setVisibility(View.GONE);
         if(ratingYear!=null)ratingYear.setSingleLine(true);
         ratings.setBaselineAligned(false);
         Runnable resizeRatings=()->{
@@ -349,10 +354,8 @@ abstract class TvActivity extends Activity {
             if(ratingYear!=null){ratingYear.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,11*scoreScale);ratingYear.setPadding(0,0,Math.round(8*scoreScale),0);}
             for(ImageView icon:scoreIcons){LinearLayout.LayoutParams bounds=(LinearLayout.LayoutParams)icon.getLayoutParams();bounds.width=bounds.height=Math.round(18*scoreScale);icon.setLayoutParams(bounds);}
             int padding=Math.round(3*scoreScale);doubanIcon.setPadding(padding,padding,padding,padding);
-            scoreSpace.leftMargin=Math.round(3*scoreScale);scoreSpace.rightMargin=Math.round(8*scoreScale);douban.setLayoutParams(scoreSpace);
-            tmdbSpace.leftMargin=Math.round(3*scoreScale);tmdb.setLayoutParams(tmdbSpace);
-            imdbIconSpace.leftMargin=0;tmdbIconSpace.leftMargin=Math.round(8*scoreScale);star.setLayoutParams(tmdbIconSpace);imdbIcon.setLayoutParams(imdbIconSpace);imdbSpace.leftMargin=Math.round(3*scoreScale);imdb.setLayoutParams(imdbSpace);
-            tomatoIconSpace.leftMargin=Math.round(8*scoreScale);tomatoIcon.setLayoutParams(tomatoIconSpace);tomatoSpace.leftMargin=Math.round(3*scoreScale);tomatoScore.setLayoutParams(tomatoSpace);
+            boolean preceding=false;
+            for(int i=0;i<scoreTexts.length;i++){LinearLayout.LayoutParams iconSpace=(LinearLayout.LayoutParams)scoreIcons[i].getLayoutParams(),valueSpace=(LinearLayout.LayoutParams)scoreTexts[i].getLayoutParams();iconSpace.leftMargin=preceding?Math.round(8*scoreScale):0;valueSpace.leftMargin=Math.round(3*scoreScale);valueSpace.rightMargin=0;scoreIcons[i].setLayoutParams(iconSpace);scoreTexts[i].setLayoutParams(valueSpace);preceding|=scoreTexts[i].getVisibility()!=View.GONE;}
         };
         artworkScaleUpdates.add(resizeRatings);
         TextView badge=null;org.json.JSONObject userData=media.optJSONObject("UserData");
@@ -368,10 +371,12 @@ abstract class TvActivity extends Activity {
                 artworkScaleUpdates.add(()->{float scale=artworkScale(artwork,scaleBaseWidthDp);episodeBadge.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,10*scale);episodeBadge.setPadding(Math.round(6*scale),0,Math.round(6*scale),0);badgeBounds.height=Math.round(24*scale);badgeBounds.topMargin=Math.round(6*scale);badgeBounds.rightMargin=Math.round(6*scale);episodeBadge.setLayoutParams(badgeBounds);});
             }
         }
-        if(landscape)bannerIdentity(artwork,media,badge);
-        if(!landscape){
+        if(landscape&&!titleBelow)bannerIdentity(artwork,media,badge);
+        if(!landscape||titleBelow){
             TextView title=text(EtknApi.title(media),14,TEXT);title.setGravity(android.view.Gravity.CENTER);title.setMaxLines(1);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setPadding(dp(2),dp(3),dp(2),0);card.addView(title,new LinearLayout.LayoutParams(-1,imageDp(25)));
             artworkScaleUpdates.add(()->{float scale=artworkScale(artwork,scaleBaseWidthDp);title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,14*scale);title.setPadding(Math.round(2*scale),Math.round(3*scale),Math.round(2*scale),0);LinearLayout.LayoutParams bounds=(LinearLayout.LayoutParams)title.getLayoutParams();bounds.height=Math.round(25*scale);title.setLayoutParams(bounds);});
+        }
+        if(!landscape){
             TextView year=text(media.optString("ProductionYear"),12,MUTED);year.setGravity(android.view.Gravity.CENTER);year.setPadding(0,0,0,0);card.addView(year,new LinearLayout.LayoutParams(-1,imageDp(20)));
             artworkScaleUpdates.add(()->{float scale=artworkScale(artwork,scaleBaseWidthDp);year.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,12*scale);LinearLayout.LayoutParams bounds=(LinearLayout.LayoutParams)year.getLayoutParams();bounds.height=Math.round(20*scale);year.setLayoutParams(bounds);});
         }
@@ -395,7 +400,7 @@ abstract class TvActivity extends Activity {
         Runnable resize=()->{int width=artwork.getWidth()>0?artwork.getWidth():imageDp(192);float scale=width/(float)dp(192);area.height=Math.round(width*0.34f);identity.setLayoutParams(area);int badgeInset=badge==null?0:badge.getMeasuredWidth()+((FrameLayout.LayoutParams)badge.getLayoutParams()).rightMargin+Math.round(dp(6)*scale);identity.setPadding(Math.round(width*0.045f),Math.round(width*0.04f),Math.max(Math.round(width*0.045f),badgeInset),Math.round(width*0.025f));title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,width*0.10f);title.setShadowLayer(Math.max(dp(1),width*0.012f),0,width*0.005f,Color.argb(235,0,0,0));};resize.run();imageSizeUpdater(identity,resize);artwork.addOnLayoutChangeListener((view,l,t,r,b,ol,ot,or,ob)->{if(r-l!=or-ol)resize.run();});if(badge!=null)badge.addOnLayoutChangeListener((view,l,t,r,b,ol,ot,or,ob)->{if(r-l!=or-ol)resize.run();});
     }
     private float artworkScale(FrameLayout artwork,int baseWidthDp){return (artwork.getWidth()>0?artwork.getWidth():imageDp(baseWidthDp))/(float)baseWidthDp;}
-    private String rating(org.json.JSONObject media,String field){double value=media.optDouble(field,Double.NaN);return Double.isNaN(value)?"–":String.format(java.util.Locale.ROOT,"%.1f",value);}
+    private String rating(org.json.JSONObject media,String field){double value=media.optDouble(field,Double.NaN);return Double.isFinite(value)&&value>0?String.format(java.util.Locale.ROOT,"%.1f",value):"–";}
     android.graphics.drawable.Drawable doubanMark(){
         android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(24,24,android.graphics.Bitmap.Config.ARGB_8888);
         android.graphics.Canvas canvas=new android.graphics.Canvas(bitmap);android.graphics.Paint paint=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);paint.setColor(Color.WHITE);

@@ -927,6 +927,31 @@ public class DetailFlowTest {
         }finally{cleanup();}
     }
 
+    @Test public void heldSeekShowsLoadedThumbnailWhileTargetKeepsChanging()throws Exception{
+        try(Fixture server=new Fixture(true)){
+            server.seekPreviews=true;open(server,"movie-single");new TvPreferences(detail,detail.api).setSkipMode(TvPreferences.SKIP_OFF);play();
+            onMain(()->((androidx.media3.ui.PlayerView)field(playback,"video")).hideController());
+            long pressed=SystemClock.uptimeMillis();
+            instrumentation.sendKeySync(new KeyEvent(pressed,SystemClock.uptimeMillis(),KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_RIGHT,0));
+            assertTrue(server.firstPreviewRequested.await(5,java.util.concurrent.TimeUnit.SECONDS));
+            instrumentation.sendKeySync(new KeyEvent(pressed,SystemClock.uptimeMillis(),KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_RIGHT,1));
+            server.firstPreviewGate.countDown();assertTrue(server.secondPreviewRequested.await(5,java.util.concurrent.TimeUnit.SECONDS));settle();
+            ImageView preview=(ImageView)field(field(playback,"seekThumbnails"),"image");
+            onMain(()->{assertTrue("按住快进时已返回的缩略图应立即可见",preview.isShown());assertNotNull(preview.getDrawable());assertTrue((Long)field(playback,"pendingSeekPosition")>=0);});
+            screenshot("held-seek-with-slower-next-preview.png");server.secondPreviewGate.countDown();
+            await(()->!Boolean.TRUE.equals(field(field(playback,"seekThumbnails"),"imageLoading"))&&preview.isShown());
+            instrumentation.sendKeySync(new KeyEvent(pressed,SystemClock.uptimeMillis(),KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_RIGHT,0,0,0,0,KeyEvent.FLAG_CANCELED));settle();
+            onMain(()->assertEquals(View.GONE,preview.getVisibility()));
+            long rewindPressed=SystemClock.uptimeMillis();
+            instrumentation.sendKeySync(new KeyEvent(rewindPressed,SystemClock.uptimeMillis(),KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_MEDIA_REWIND,0));
+            instrumentation.sendKeySync(new KeyEvent(rewindPressed,SystemClock.uptimeMillis(),KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_MEDIA_REWIND,1));
+            await(preview::isShown);screenshot("held-rewind-preview.png");
+            onMain(()->assertTrue((Long)field(playback,"pendingSeekPosition")>=0));
+            instrumentation.sendKeySync(new KeyEvent(rewindPressed,SystemClock.uptimeMillis(),KeyEvent.ACTION_UP,KeyEvent.KEYCODE_MEDIA_REWIND,0,0,0,0,KeyEvent.FLAG_CANCELED));settle();
+            onMain(()->assertEquals(View.GONE,preview.getVisibility()));
+        }finally{cleanup();}
+    }
+
     @Test public void heldSeekKeysPreviewLocallyAndCommitOnceAfterRelease()throws Exception{
         try(Fixture server=new Fixture(true)){
             open(server,"movie-single");new TvPreferences(detail,detail.api).setSkipMode(TvPreferences.SKIP_OFF);play();
@@ -1776,6 +1801,9 @@ public class DetailFlowTest {
         final java.util.concurrent.CountDownLatch updateGate=new java.util.concurrent.CountDownLatch(1),eventsConnected=new java.util.concurrent.CountDownLatch(1);
         final ServerSocket socket=new ServerSocket(0,32,InetAddress.getByName("127.0.0.1"));
         final byte[] image,media,updatedImage;
+        volatile boolean seekPreviews;
+        final java.util.concurrent.atomic.AtomicInteger previewRequests=new java.util.concurrent.atomic.AtomicInteger();
+        final java.util.concurrent.CountDownLatch firstPreviewRequested=new java.util.concurrent.CountDownLatch(1),firstPreviewGate=new java.util.concurrent.CountDownLatch(1),secondPreviewRequested=new java.util.concurrent.CountDownLatch(1),secondPreviewGate=new java.util.concurrent.CountDownLatch(1);
         final List<String> imagePaths=Collections.synchronizedList(new ArrayList<>()),requests=Collections.synchronizedList(new ArrayList<>());
         final List<JSONObject> stopped=Collections.synchronizedList(new ArrayList<>());
         final java.util.concurrent.CountDownLatch stoppedReceived=new java.util.concurrent.CountDownLatch(1);
@@ -1827,6 +1855,7 @@ public class DetailFlowTest {
             return value;
         }
         JSONObject response(String path)throws Exception{
+            if(seekPreviews&&path.contains("/PreviewThumbnails?")){JSONArray frames=new JSONArray();for(int i=0;i<=12;i++)frames.put(new JSONObject().put("Index",i).put("PositionTicks",i*10000000L).put("ImageTag","frame-"+i));return new JSONObject().put("MediaSourceId",android.net.Uri.parse(path).getQueryParameter("MediaSourceId")).put("AspectRatio",16d/9).put("Thumbnails",frames);}
             if(path.equals("/api/tv/System/Appearance"))return appearance;
             if(path.equals("/api/tv/System/Danmaku"))return new JSONObject().put("Available",danmakuAvailable);
             if(path.equals("/api/tv/Users/Me/Danmaku"))return new JSONObject().put("enabled",danmakuEnabled).put("state",danmakuState());
@@ -1880,7 +1909,8 @@ public class DetailFlowTest {
                 if(post&&path.endsWith("/SubtitleTranslation")){char[] data=new char[length];int received=0,n;while(received<length&&(n=reader.read(data,received,length-received))>0)received+=n;JSONArray cues=new JSONObject(new String(data)).getJSONArray("cues");synchronized(translationCues){for(int i=0;i<cues.length();i++){JSONObject cue=cues.getJSONObject(i);if(translationCues.stream().noneMatch(c->c.toString().equals(cue.toString())))translationCues.add(cue);}}}
                 if(path.endsWith("/SubtitleTranslation")&&translationGate!=null){java.util.concurrent.CountDownLatch gate=translationGate;translationRequested.countDown();if(!gate.await(15,java.util.concurrent.TimeUnit.SECONDS))throw new IOException("Synthetic translation gate timed out");if(translationGate==gate)translationGate=new java.util.concurrent.CountDownLatch(1);}
                 if(!path.startsWith("/api/tv/"))unexpectedPath=path;
-                boolean picture=path.contains("/Images/")||path.contains("/FacetArtwork?")||path.contains("/Appearance/Background"),video=path.startsWith("/api/tv/media.mkv")||path.startsWith("/api/tv/media.iso"),subtitle=path.contains("subtitle.vtt"),missing=path.contains("/Images/Logo")&&!path.contains("movie-single")||path.contains("/FacetArtwork?")&&path.contains("Kind=Networks")||brokenAvatar&&path.contains("/Users/detail-fixture/Images/Primary");if(picture)imagePaths.add(path);
+                if(seekPreviews&&path.contains("/PreviewThumbnails/")){int count=previewRequests.incrementAndGet();if(count==1){firstPreviewRequested.countDown();firstPreviewGate.await(15,java.util.concurrent.TimeUnit.SECONDS);}else if(count==2){secondPreviewRequested.countDown();secondPreviewGate.await(15,java.util.concurrent.TimeUnit.SECONDS);}}
+                boolean picture=path.contains("/Images/")||seekPreviews&&path.contains("/PreviewThumbnails/")||path.contains("/FacetArtwork?")||path.contains("/Appearance/Background"),video=path.startsWith("/api/tv/media.mkv")||path.startsWith("/api/tv/media.iso"),subtitle=path.contains("subtitle.vtt"),missing=path.contains("/Images/Logo")&&!path.contains("movie-single")||path.contains("/FacetArtwork?")&&path.contains("Kind=Networks")||brokenAvatar&&path.contains("/Users/detail-fixture/Images/Primary");if(picture)imagePaths.add(path);
                 byte[] portrait=null;if(portraitLogo&&path.contains("/Images/Logo")){android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(120,360,android.graphics.Bitmap.Config.ARGB_8888);bitmap.eraseColor(android.graphics.Color.CYAN);java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,bytes);portrait=bytes.toByteArray();bitmap.recycle();}
                 byte[] body=portrait!=null?portrait:video?media:subtitle?(pgsSubtitle?PlaybackCompatibilityTest.supSample():"WEBVTT\n\n00:00:00.000 --> 00:00:20.000\nExternal synthetic subtitle\n".getBytes(StandardCharsets.UTF_8)):picture?(path.contains("tag=art2")?updatedImage:image):response(path).toString().getBytes(StandardCharsets.UTF_8);
                 if(holdMetadata&&!post&&!picture&&path.contains("/Users/")&&path.contains("/Items/")){metadataRequested.countDown();metadataGate.await(15,java.util.concurrent.TimeUnit.SECONDS);}

@@ -1,0 +1,73 @@
+{
+  "date": "2026-11-18",
+  "packageName": "xyz.etkn.tv",
+  "versionName": "0.1.130",
+  "versionCode": 131,
+  "apkPath": "D:/work/ETKN-TV/outputs/20261118-card-seek-fixes/etkn-tv-0.1.130-card-seek-fixes.apk",
+  "sha256": "7e7d542a27eb25b281451b7f2613b3c53a89425df802c0ab9e636466dfb78d97",
+  "certificateSha256": "e02d42443875c3631be48199e0df419b0570fcc421be7ff2b620f4c643e67bd7",
+  "unitTests": {
+    "tests": 128,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "lint": {
+    "errors": 0,
+    "warnings": 111
+  },
+  "instrumentation": [
+    {
+      "test": "DetailFlowTest#heldSeekShowsLoadedThumbnailWhileTargetKeepsChanging",
+      "passed": true,
+      "exitCode": 0
+    },
+    {
+      "test": "DetailFlowTest#heldSeekKeysPreviewLocallyAndCommitOnceAfterRelease",
+      "passed": true,
+      "exitCode": 0
+    },
+    {
+      "test": "HomeFocusTest#movieCardsHideOnlyMissingRatings",
+      "passed": true,
+      "exitCode": 0
+    },
+    {
+      "test": "HomeFocusTest#videoBannerTitlesSitBelowAndAllScoresStayHidden",
+      "passed": true,
+      "exitCode": 0
+    },
+    {
+      "test": "HomeFocusTest#imdbScoresFitBothCardViewsAndSortThroughTvApi",
+      "passed": true,
+      "exitCode": 0
+    },
+    {
+      "test": "HomeFocusTest#adaptiveRequestsKeepCardSizesAndBannerMetadataInsideArtwork",
+      "passed": true,
+      "exitCode": 0
+    }
+  ],
+  "testPackage": "xyz.etkn.tv.cardseekverify",
+  "testEnvironment": "Android TV API36 emulator; loopback synthetic fixtures; release certificate",
+  "installation": {
+    "device": "L055FCN Android9",
+    "method": "adb install -r",
+    "success": true,
+    "installedHashMatches": true,
+    "startupReceiverPreserved": true,
+    "accessibilityListPreserved": true,
+    "bootStartupServiceBound": true,
+    "firstInstallTimePreserved": true,
+    "dataInodePreserved": true,
+    "bootCountPreserved": true,
+    "leanbackStart": "Status ok"
+  },
+  "notVerified": [
+    "Real-account long-held fast-forward/rewind visual acceptance on physical TV",
+    "Authenticated Web hover visual acceptance"
+  ],
+  "published": false,
+  "pushed": false,
+  "webReport": "D:/work/ETKvNext/docs/reports/2026-11-18-web-preview-size.md"
+}

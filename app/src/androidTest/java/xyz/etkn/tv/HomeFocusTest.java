@@ -73,9 +73,58 @@ public class HomeFocusTest {
             call("setSort",new Class<?>[]{String.class,String.class},"IMDbRating","Ascending");await(()->server.lastListingPath.contains("SortBy=IMDbRating")&&server.lastListingPath.contains("SortOrder=Ascending"));
             call("setSort",new Class<?>[]{String.class,String.class},"CriticRating","Descending");await(()->server.lastListingPath.contains("SortBy=CriticRating"));
             java.lang.reflect.Field sorts=HomeActivity.class.getDeclaredField("FACET_SORTS");sorts.setAccessible(true);assertTrue(java.util.Arrays.stream((String[][])sorts.get(null)).anyMatch(row->row[0].equals("IMDb评分")&&row[1].equals("IMDbRating")));
-        }finally{if(home!=null)instrumentation.runOnMainSync(home::finish);}
+        }finally{closePosterFixture();}
     }
 
+    @Test public void videoBannerTitlesSitBelowAndAllScoresStayHidden()throws Exception{
+        try(Fixture server=new Fixture()){
+            server.videoCards=true;server.respectLimits=true;openMenuHomeFixture(server);
+            TvPreferences preferences=new TvPreferences(home,home.api);
+            evidence=new File(instrumentation.getTargetContext().getExternalFilesDir(null),"video-card-layout");assertTrue(evidence.isDirectory()||evidence.mkdirs());
+            for(String view:new String[]{"portrait","landscape"}){
+                preferences.saveLibraryView("library-0",view);call("openLibrary",new Class<?>[]{JSONObject.class},new JSONObject().put("Id","library-0").put("Name","视频库").put("CollectionType","homevideos").put("SourceType","path"));
+                for(int size=0;size<5;size++){
+                    final int level=size;instrumentation.runOnMainSync(()->{preferences.setImageSize(level);home.onResume();});
+                    await(()->posterGrid()!=null&&posterGrid().getChildCount()>=3&&!Boolean.TRUE.equals(field(HomeActivity.class,"loadingMore"))&&!Boolean.TRUE.equals(field(HomeActivity.class,"refreshingPosters")));
+                    instrumentation.runOnMainSync(()->{
+                        boolean landscape=view.equals("landscape");int first=landscape?1:0;
+                        for(int i=0;i<3;i++){
+                            ViewGroup card=(ViewGroup)posterGrid().getChildAt(i),art=(ViewGroup)card.getChildAt(0),ratings=(ViewGroup)art.getChildAt(1);
+                            assertEquals(landscape?2:3,card.getChildCount());assertEquals("视频横幅不再叠加标题",2,art.getChildCount());
+                            android.widget.TextView title=(android.widget.TextView)card.getChildAt(1);assertEquals("海报影片 "+i,title.getText().toString());assertEquals(art.getBottom(),title.getTop());assertTrue(title.getHeight()>0&&title.getBottom()<=card.getHeight());assertEquals(1,title.getMaxLines());
+                            assertEquals(Math.round(art.getWidth()*(landscape?9f/16f:1.5f)),art.getHeight());
+                            assertEquals("视频库不显示任何评分行",View.GONE,ratings.getVisibility());
+                            for(int part=0;part<4;part++){
+                                assertEquals(View.GONE,ratings.getChildAt(first+part*2).getVisibility());assertEquals(View.GONE,ratings.getChildAt(first+part*2+1).getVisibility());
+                            }
+                        }
+                    });
+                    if(size==0||size==2||size==4)saveScreenshot("video-"+view+"-"+size+".png");
+                }
+            }
+        }finally{closePosterFixture();}
+    }
+
+    @Test public void movieCardsHideOnlyMissingRatings()throws Exception{
+        try(Fixture server=new Fixture()){
+            server.videoCards=true;server.respectLimits=true;openMenuHomeFixture(server);
+            new TvPreferences(home,home.api).saveLibraryView("library-0","portrait");
+            call("openLibrary",new Class<?>[]{JSONObject.class},new JSONObject().put("Id","library-0").put("Name","电影库").put("CollectionType","movies"));
+            await(()->posterGrid()!=null&&posterGrid().getChildCount()>=3&&!Boolean.TRUE.equals(field(HomeActivity.class,"loadingMore")));
+            instrumentation.runOnMainSync(()->{
+                for(int i=0;i<3;i++){
+                    ViewGroup art=(ViewGroup)((ViewGroup)posterGrid().getChildAt(i)).getChildAt(0),ratings=(ViewGroup)art.getChildAt(1);
+                    assertEquals(i==0?View.GONE:View.VISIBLE,ratings.getVisibility());
+                    for(int part=0;part<4;part++){
+                        int visibility=(i==1&&part==1||i==2&&part==3)?View.VISIBLE:View.GONE;
+                        View icon=ratings.getChildAt(part*2),score=ratings.getChildAt(part*2+1);assertEquals(visibility,icon.getVisibility());assertEquals(visibility,score.getVisibility());
+                        if(visibility==View.VISIBLE)assertEquals(0,((android.widget.LinearLayout.LayoutParams)icon.getLayoutParams()).leftMargin);
+                    }
+                    if(i==2)assertEquals("0%",((android.widget.TextView)ratings.getChildAt(7)).getText().toString());
+                }
+            });
+        }finally{closePosterFixture();}
+    }
     @Test public void adaptiveRequestsKeepCardSizesAndBannerMetadataInsideArtwork()throws Exception{
         try(Fixture server=new Fixture()){
             server.respectLimits=true;
@@ -158,7 +207,8 @@ public class HomeFocusTest {
                     android.widget.TextView title=(android.widget.TextView)card.getChildAt(1),year=(android.widget.TextView)card.getChildAt(2);ViewGroup scores=(ViewGroup)art.getChildAt(1);android.widget.TextView rating=(android.widget.TextView)scores.getChildAt(1),badgeText=(android.widget.TextView)art.getChildAt(2);
                     portraitMetrics[0]=title.getTextSize();portraitMetrics[1]=title.getHeight();portraitMetrics[2]=title.getPaddingTop();portraitMetrics[3]=year.getTextSize();portraitMetrics[4]=year.getHeight();portraitMetrics[5]=rating.getTextSize();portraitMetrics[6]=scores.getChildAt(0).getWidth();portraitMetrics[7]=scores.getHeight();portraitMetrics[8]=((android.widget.LinearLayout.LayoutParams)rating.getLayoutParams()).leftMargin;portraitMetrics[9]=badgeText.getTextSize();portraitMetrics[10]=badgeText.getWidth();portraitMetrics[11]=badgeText.getHeight();portraitMetrics[12]=badgeText.getPaddingLeft();portraitMetrics[13]=((android.widget.FrameLayout.LayoutParams)badgeText.getLayoutParams()).rightMargin;portraitMetrics[14]=((android.widget.FrameLayout.LayoutParams)badgeText.getLayoutParams()).topMargin;
                 });
-                if(previousPortraitMetrics!=null){assertTrue("竖幅卡片变大时片名随之增大",portraitMetrics[0]>previousPortraitMetrics[0]);float scale=portraitMetrics[0]/previousPortraitMetrics[0];for(int part=1;part<portraitMetrics.length;part++)assertEquals("竖幅缩放指标 "+part+" 必须与片名等比例变化",previousPortraitMetrics[part]*scale,portraitMetrics[part],part==0||part==3||part==5||part==9?0.05f:part==10?5.0f:2.0f);}
+                // Score fitting measures hinted glyph widths; allow one physical pixel for rounding between sizes.
+                if(previousPortraitMetrics!=null){assertTrue("竖幅卡片变大时片名随之增大",portraitMetrics[0]>previousPortraitMetrics[0]);float scale=portraitMetrics[0]/previousPortraitMetrics[0];for(int part=1;part<portraitMetrics.length;part++)assertEquals("竖幅缩放指标 "+part+" 必须与片名等比例变化",previousPortraitMetrics[part]*scale,portraitMetrics[part],part==5?1f:part==0||part==3||part==9?0.05f:part==10?5.0f:2.0f);}
                 previousPortraitMetrics=portraitMetrics;
                 if(size==0||size==2||size==4)saveScreenshot("poster-size-"+size+".png");
             }
@@ -903,7 +953,7 @@ public class HomeFocusTest {
         volatile boolean streamMissing,holdStreamImage;
         final java.util.List<String> streamPaths=new java.util.concurrent.CopyOnWriteArrayList<>();
         final java.util.concurrent.CountDownLatch streamImageGate=new java.util.concurrent.CountDownLatch(1);
-        volatile boolean missingFirstLogo,styledBannerTitles,tomatoScores;
+        volatile boolean missingFirstLogo,styledBannerTitles,tomatoScores,videoCards;
         volatile boolean nativeGroups;
         final java.util.concurrent.CountDownLatch facetGate=new java.util.concurrent.CountDownLatch(1);
         final java.util.List<String> latestPaths=java.util.Collections.synchronizedList(new java.util.ArrayList<>());
@@ -1013,12 +1063,14 @@ public class HomeFocusTest {
                 int start=0;java.util.regex.Matcher match=java.util.regex.Pattern.compile("[?&]StartIndex=(\\d+)").matcher(path);if(match.find())start=Integer.parseInt(match.group(1));
                 JSONArray page=new JSONArray();for(int i=start;i<Math.min(start+limit,nativeGroups?3:120);i++)page.put(new JSONObject().put("Id","item-"+i).put("Name",styledBannerTitles?new String[]{"长安三万里","The Grand Budapest Hotel","这个杀手不太冷：导演剪辑特别版","宇宙探索编辑部"}[i%4]:"海报影片 "+i).put("Type",i%2==0?"Series":"Movie").put("ProductionYear",2020+i%5).put("RecursiveItemCount",12).put("TMDbRating",7.1+(i%10)/10.0).put("DoubanRating",8.1+(i%10)/10.0).put("IMDbRating",7.9).put("UserData",new JSONObject().put("UnplayedItemCount",3)).put("ImageTags",new JSONObject().put("Primary","poster")));
                 for(int i=0;i<page.length();i++){JSONObject row=page.getJSONObject(i);if(tomatoScores)row.put("CriticRating",100);if(changed)row.put("DoubanRating",9.4).put("TMDbRating",9.0);row.getJSONObject("ImageTags").put("Primary",changed?"poster2":"poster");row.getJSONObject("UserData").put("IsFavorite",favorite).put("Played",played);}
+                if(videoCards)for(int i=0;i<page.length();i++){JSONObject row=page.getJSONObject(i);row.put("Type","Video");row.remove("ProductionYear");row.remove("DoubanRating");row.remove("IMDbRating");row.remove("TMDbRating");if(i%3==1)row.put("IMDbRating",7.9).put("DoubanRating",0).put("TMDbRating",-1);if(i%3==2)row.put("CriticRating",0);}
                 if(deleted&&start==0)page.remove(0);
                 return new JSONObject().put("Items",page).put("TotalRecordCount",deleted?119:nativeGroups?3:120).put("EpisodeCountMode","unplayed");
             }
             boolean libraries=path.endsWith("/Views");JSONArray items=new JSONArray();
             for(int i=0;i<(libraries?6:Math.min(12,limit));i++)items.put(new JSONObject().put("Id",(libraries?"library-":"item-")+i).put("Name",(libraries?"媒体库 ":changed?"更新后的影片 ":"测试影片 ")+(i+1)).put("Type",libraries?"CollectionFolder":"Movie").put("Overview","背景简介").put("ProductionYear",2026).put("CollectionType",libraries?"mixed":"").put("SourceType",libraries?"path":"").put("RunTimeTicks",1000).put("UserData",new JSONObject().put("PlaybackPositionTicks",300)));
             if(browseFeatures&&libraries){items.getJSONObject(0).put("CollectionType","movies");items.getJSONObject(1).put("SourceType","filter").put("CollectionType","tvshows");items.getJSONObject(5).put("SourceType","collection").put("CollectionType","boxsets").put("Name","合集");}
+            if(videoCards&&libraries)items.getJSONObject(0).put("CollectionType","homevideos");
             if(nativeGroups&&libraries){JSONArray grouped=new JSONArray().put(items.getJSONObject(0)).put(new JSONObject().put("Id","library-group-7").put("Name","电影分组").put("Type","CollectionFolder").put("CollectionType","mixed").put("SourceType","group").put("ChildCount",2).put("UserData",new JSONObject()));for(int i=3;i<items.length();i++)grouped.put(items.get(i));items=grouped;}
             if(hiddenResume&&path.contains("/Items/Resume?"))items.remove(0);
             for(int i=0;i<items.length();i++)items.getJSONObject(i).getJSONObject("UserData").put("IsFavorite",favorite).put("Played",played);

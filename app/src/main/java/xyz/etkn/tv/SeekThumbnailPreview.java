@@ -77,14 +77,16 @@ final class SeekThumbnailPreview {
         String key=frame.optString("ImageTag");
         if(key.equals(imageKey)||imageLoading)return;
         imageLoading=true;int revision=generation;
-        imageKey=key;image.setTag(null);image.setImageDrawable(null);image.setVisibility(View.GONE);
+        imageKey=key;
         String url=api.server+"/api/tv/Items/"+EtknApi.encode(item)+"/PreviewThumbnails/"+frame.optInt("Index")+"?MediaSourceId="+EtknApi.encode(source)+"&tag="+EtknApi.encode(key);
         Images.thumbnail(api,url,image,320,(int)Math.round(320/aspect),loaded->{
             if(closed||revision!=generation||!TvAppearance.sameSession(api,user))return;
             imageLoading=false;
             JSONObject current=frameAt(manifest.optJSONArray("Thumbnails"),target);
-            if(visible&&current!=null&&key.equals(current.optString("ImageTag")))image.setVisibility(loaded?View.VISIBLE:View.GONE);
-            else if(visible)render();
+            if(visible){
+                if(loaded)image.setVisibility(View.VISIBLE);
+                if(current!=null&&!key.equals(current.optString("ImageTag")))render();
+            }
         });
     }
     static JSONObject frameAt(JSONArray frames,long positionMs){

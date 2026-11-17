@@ -155,7 +155,7 @@ public final class HomeActivity extends TvActivity {
     private int homeShelfLimit(int cardWidthDp){return shelfCapacity(cardWidthDp,12,74)+1;}
     private int posterPageSize(){
         boolean landscape=folderMode||viewMode.equals("landscape");
-        int count=gridCapacity(posterGrid,homeScroll,landscape?9f/16f:1.5f,folderMode?42:landscape?0:45,6);
+        int count=gridCapacity(posterGrid,homeScroll,landscape?9f/16f:1.5f,folderMode?42:landscape?(videoLibrary()?25:0):45,6);
         return count+posterGrid.getColumnCount();
     }
     @Override void mediaDeleted(){if("items".equals(mode))refreshPosters();else if("home".equals(mode))refreshHome();else loadItems();}
@@ -403,7 +403,7 @@ public final class HomeActivity extends TvActivity {
     }
     private void addPoster(JSONObject item){
         boolean folder="Folder".equals(item.optString("Type"));
-        View card=folder?folderCard(item):posterCard(posterGrid,item,()->{if("BoxSet".equals(item.optString("Type"))){rememberCollectionPosition(item);openCollection(item);}else detail(item);},episodeCountMode,viewMode.equals("landscape"));card.setTag(item);
+        View card=folder?folderCard(item):posterCard(posterGrid,item,()->{if("BoxSet".equals(item.optString("Type"))){rememberCollectionPosition(item);openCollection(item);}else detail(item);},episodeCountMode,viewMode.equals("landscape"),videoLibrary());card.setTag(item);
         card.setOnLongClickListener(view->{showItemMenu(view);return true;});
     }
     private void updatePosterViewButton(){
@@ -430,6 +430,7 @@ public final class HomeActivity extends TvActivity {
     private void restorePosterPosition(int request){String id=restorePosterId;int y=restorePosterScroll;restorePosterCount=0;restorePosterId="";homeScroll.post(()->{if(request!=revision||menu.getVisibility()==View.VISIBLE)return;for(int i=0;i<posterGrid.getChildCount();i++){View card=posterGrid.getChildAt(i);if(card.getTag() instanceof JSONObject&&id.equals(((JSONObject)card.getTag()).optString("Id"))){card.requestFocus();break;}}homeScroll.scrollTo(0,y);});}
     private void rememberCollectionPosition(JSONObject item){collectionReturnFocus=item.optString("Id");collectionReturnCount=offset;collectionReturnScroll=homeScroll.getScrollY();}
     private boolean collectionLibrary(){return activeCollection==null&&selectedLibrary!=null&&"boxsets".equals(selectedLibrary.optString("CollectionType"));}
+    private boolean videoLibrary(){return selectedLibrary!=null&&"homevideos".equals(selectedLibrary.optString("CollectionType"));}
     private void refreshPosters(){
         if(!"items".equals(mode)||posterGrid==null)return;
         if(loadingMore||refreshingPosters){pendingPosterRefresh=true;return;}
