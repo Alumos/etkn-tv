@@ -1,0 +1,73 @@
+{
+  "local": {
+    "version": "0.1.130",
+    "versionCode": 131,
+    "packageName": "xyz.etkn.tv",
+    "certificateSha256": "e02d42443875c3631be48199e0df419b0570fcc421be7ff2b620f4c643e67bd7",
+    "unitTests": {
+      "tests": 127,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "lint": {
+      "Fatal": 0,
+      "Error": 0,
+      "Warning": 110
+    },
+    "nativeLibrariesComparedWith": "0.1.129",
+    "nativeLibraryCount": 20,
+    "nativeLibrariesByteIdentical": true,
+    "apk": {
+      "size": 70082113,
+      "sha256": "a2a1c0c8fec062198d9b46407e5b306e0dcd6bd2f69253db13d7fd7c082e8486"
+    }
+  },
+  "instrumentation": {
+    "seconds": 65.361,
+    "realTvInstalled": false,
+    "targetPackage": "xyz.etkn.tv.songstest",
+    "tests": 8,
+    "device": "API 36 emulator",
+    "failures": 0
+  },
+  "publication": {
+    "releaseId": 448467126,
+    "version": "0.1.130",
+    "versionCode": 131,
+    "publishedAt": "2026-11-17T10:30:06Z",
+    "url": "https://github.com/hbq0405/etkn-tv/releases/tag/v0.1.130",
+    "sourceCommit": "a7609d098e555c6a7e3c53368fbd58f92ede3f12",
+    "assets": {
+      "etkn-tv-0.1.130.apk": {
+        "size": 70082113,
+        "sha256": "a2a1c0c8fec062198d9b46407e5b306e0dcd6bd2f69253db13d7fd7c082e8486",
+        "anonymousBytesEqual": true
+      },
+      "RELEASE_NOTES.md": {
+        "size": 388,
+        "sha256": "b428ceb74f03b8ccca3ba7489fca53e114afd574e83628e0d025e8f772e5c689",
+        "anonymousBytesEqual": true
+      },
+      "SHA256SUMS.txt": {
+        "size": 247,
+        "sha256": "b32d7a36ef838da007637186ff964e12daeff8d3632e701158cc5594567ecfce",
+        "anonymousBytesEqual": true
+      },
+      "update.json": {
+        "size": 420,
+        "sha256": "324bb599a9e0c8b0cb7eb0ef68834af7439ce84a1c2a5fe1dcc2575fb06f29fe",
+        "anonymousBytesEqual": true
+      }
+    },
+    "latestManifestEqual": true
+  },
+  "notification": {
+    "runId": 44065397683,
+    "attempt": 1,
+    "conclusion": "success",
+    "sourceCommit": "a7609d098e555c6a7e3c53368fbd58f92ede3f12",
+    "messageId": "65342",
+    "receiptCount": 1
+  }
+}
