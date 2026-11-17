@@ -34,6 +34,7 @@ public final class PlayerActivity extends TvActivity {
     private FrameLayout playbackStage;
     private PlayerView video;
     private PixelTimeBar seekProgress;
+    private SeekThumbnailPreview seekThumbnails;
     private FrameLayout playbackOverlay;
     private AppearanceBackground waitingBackground;
     private ImageView pauseIcon,pauseAvatar;
@@ -131,6 +132,7 @@ public final class PlayerActivity extends TvActivity {
         waitingBackground=new AppearanceBackground(this);stage.addView(waitingBackground,new FrameLayout.LayoutParams(-1,-1));
         seekProgress=new PixelTimeBar(this);seekProgress.setEnabled(false);seekProgress.setVisibility(View.GONE);
         FrameLayout.LayoutParams seekLayout=new FrameLayout.LayoutParams(-1,dp(64),Gravity.BOTTOM);seekLayout.setMargins(dp(28),0,dp(28),0);stage.addView(seekProgress,seekLayout);
+        seekThumbnails=new SeekThumbnailPreview(api,stage);
         createPlaybackOverlay(stage);
         controls=column();controls.setPadding(dp(12),dp(8),dp(12),dp(8));controls.setGravity(Gravity.CENTER_HORIZONTAL);
         TextView title=text(getIntent().getStringExtra("title"),18,TEXT);title.setSingleLine(true);title.setEllipsize(android.text.TextUtils.TruncateAt.END);controls.addView(title);
@@ -183,6 +185,11 @@ public final class PlayerActivity extends TvActivity {
         if(bar!=null){
             FrameLayout.LayoutParams layout=(FrameLayout.LayoutParams)bar.getLayoutParams();layout.gravity=Gravity.BOTTOM;layout.height=dp(64);layout.leftMargin=layout.rightMargin=dp(28);layout.topMargin=layout.bottomMargin=0;bar.setLayoutParams(layout);
             bar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{FrameLayout.LayoutParams bounds=(FrameLayout.LayoutParams)v.getLayoutParams();if(bounds.bottomMargin!=0||bounds.topMargin!=0){bounds.topMargin=bounds.bottomMargin=0;v.setLayoutParams(bounds);}});
+            bar.addListener(new androidx.media3.ui.TimeBar.OnScrubListener(){
+                @Override public void onScrubStart(androidx.media3.ui.TimeBar timeBar,long position){showSeekThumbnail(position);}
+                @Override public void onScrubMove(androidx.media3.ui.TimeBar timeBar,long position){showSeekThumbnail(position);}
+                @Override public void onScrubStop(androidx.media3.ui.TimeBar timeBar,long position,boolean canceled){if(seekThumbnails!=null)seekThumbnails.hide();}
+            });
         }
         View time=view.findViewById(androidx.media3.ui.R.id.exo_bottom_bar);
         time.setVisibility(View.GONE);
@@ -615,12 +622,16 @@ public final class PlayerActivity extends TvActivity {
         assistanceRevision++;assistancePending=false;bitrateAttempted=false;audioAssistAttempted=false;videoAssistAttempted=false;assistanceDisabled=false;String id=transcodeSession;transcodeSession="";transcodeSource=null;
         if(!id.isEmpty())reports.execute(()->{try{api.delete("/api/tv/Transcodes/"+id);}catch(Exception ignored){}});
     }
+    private void showSeekThumbnail(long target){
+        if(seekThumbnails!=null){if(target>=0&&source!=null&&player!=null)seekThumbnails.show(itemId,source.optString("Id"),target,player.getDuration());else seekThumbnails.hide();}
+    }
     private void showSeekProgress(){
+        showSeekThumbnail(pendingSeekPosition);
         seekKeys=true;video.hideController();controls.setVisibility(View.GONE);skipButton.setVisibility(View.GONE);seekProgress.setVisibility(View.VISIBLE);
         timer.removeCallbacks(seekProgressUpdate);timer.removeCallbacks(seekProgressHide);seekProgressUpdate.run();if(pendingSeekPosition<0)timer.postDelayed(seekProgressHide,5000);video.requestFocus();
     }
     private void commitSeek(){if(player==null||pendingSeekPosition<0)return;videoReadySince=0;long target=pendingSeekPosition;pendingSeekPosition=-1;player.seekTo(target);showSeekProgress();}
-    private void hideSeekProgress(){seekKeys=false;pendingSeekPosition=-1;timer.removeCallbacks(seekCommit);timer.removeCallbacks(seekProgressUpdate);timer.removeCallbacks(seekProgressHide);updatePlaybackOverlay();}
+    private void hideSeekProgress(){if(seekThumbnails!=null)seekThumbnails.hide();seekKeys=false;pendingSeekPosition=-1;timer.removeCallbacks(seekCommit);timer.removeCallbacks(seekProgressUpdate);timer.removeCallbacks(seekProgressHide);updatePlaybackOverlay();}
     private void showControls(){hideSeekProgress();video.showController();controls.setVisibility(View.VISIBLE);updatePlaybackOverlay();focusNextWhenLoaded=!hasNext();(hasNext()?nextButton:audioButton).requestFocus();}
     private void applyDanmakuState(JSONObject state){
         if(state==null){if(danmaku!=null){danmaku.close();danmaku=null;}danmakuSettingsButton.setVisibility(View.GONE);return;}
@@ -710,12 +721,12 @@ public final class PlayerActivity extends TvActivity {
         Intent update=new Intent(DetailActivity.ACTION_PLAYBACK_PROGRESS).setPackage(getPackageName()).putExtra("itemId",payload.optString("ItemId")).putExtra("positionTicks",payload.optLong("PositionTicks")).putExtra("runtimeTicks",payload.optLong("RunTimeTicks")).putExtra("completed",payload.optBoolean("PlayedToCompletion")).putExtra("synced",synced);sendBroadcast(update);
     }
     private void stopPlayer(){stopPlayer(true);}
-    private void stopPlayer(boolean releaseAssistance){if(subtitleOffsets!=null){subtitleOffsets.close();subtitleOffsets=null;}cancelConfirm();if(danmakuDialog!=null)danmakuDialog.dismiss();danmakuSaving=false;danmakuRevision++;if(danmaku!=null){danmaku.close();danmaku=null;}if(translation!=null){translation.close();translation=null;}cancelCreditsCountdown();creditsSkipCancelled=false;hideSeekProgress();timer.removeCallbacks(progress);timer.removeCallbacks(skipCheck);timer.removeCallbacks(videoCheck);if(skipButton!=null)skipButton.setVisibility(View.GONE);if(player!=null){position=Math.max(0,player.getCurrentPosition());playWhenReady=player.getPlayWhenReady();if(releaseAssistance||transcodeSession.isEmpty())report("Stopped");video.setPlayer(null);player.release();player=null;TvPlayerFactory.clearAssView(video.getSubtitleView());}if(releaseAssistance)clearAssistance();updatePlaybackOverlay();}
+    private void stopPlayer(boolean releaseAssistance){if(seekThumbnails!=null)seekThumbnails.reset();if(subtitleOffsets!=null){subtitleOffsets.close();subtitleOffsets=null;}cancelConfirm();if(danmakuDialog!=null)danmakuDialog.dismiss();danmakuSaving=false;danmakuRevision++;if(danmaku!=null){danmaku.close();danmaku=null;}if(translation!=null){translation.close();translation=null;}cancelCreditsCountdown();creditsSkipCancelled=false;hideSeekProgress();timer.removeCallbacks(progress);timer.removeCallbacks(skipCheck);timer.removeCallbacks(videoCheck);if(skipButton!=null)skipButton.setVisibility(View.GONE);if(player!=null){position=Math.max(0,player.getCurrentPosition());playWhenReady=player.getPlayWhenReady();if(releaseAssistance||transcodeSession.isEmpty())report("Stopped");video.setPlayer(null);player.release();player=null;TvPlayerFactory.clearAssView(video.getSubtitleView());}if(releaseAssistance)clearAssistance();updatePlaybackOverlay();}
     @Override protected void onStart(){super.onStart();if(!LoginGate.isSatisfied()&&api.session.persist()!=SessionStore.PERSIST_FULL)return;foreground=true;if(info!=null&&player==null)startSource();}
     private void cancelConfirm(){timer.removeCallbacks(confirmLongPress);confirmPress=null;confirmLongPressed=false;}
     @Override protected void onPause(){cancelConfirm();cancelCreditsCountdown();hideSeekProgress();super.onPause();}
     @Override protected void onStop(){foreground=false;stopPlayer();clearAssistance();super.onStop();}
-    @Override protected void onDestroy(){timer.removeCallbacksAndMessages(null);reports.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){if(seekThumbnails!=null)seekThumbnails.close();timer.removeCallbacksAndMessages(null);reports.shutdown();super.onDestroy();}
     @Override protected void onSaveInstanceState(Bundle state){state.putFloat("speed",playbackSpeed);state.putLong("position",player==null?position:player.getCurrentPosition());state.putString("sourceId",source==null?getIntent().getStringExtra("sourceId"):source.optString("Id"));state.putInt("audioIndex",audioIndex);state.putInt("subtitleIndex",subtitleIndex);state.putBoolean("softwareVideo",softwareVideo);state.putBoolean("hardwareSurfaceRetry",hardwareSurfaceRetry);state.putBoolean("softwareAudio",softwareAudio);state.putBoolean("enhancedSubtitles",enhancedSubtitles);state.putBoolean("playWhenReady",player==null?playWhenReady:player.getPlayWhenReady());super.onSaveInstanceState(state);}
     @Override public boolean dispatchKeyEvent(KeyEvent event){
         int key=event.getKeyCode();boolean down=event.getAction()==KeyEvent.ACTION_DOWN;
