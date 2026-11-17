@@ -356,6 +356,11 @@ abstract class TvActivity extends Activity {
         };
         artworkScaleUpdates.add(resizeRatings);
         TextView badge=null;org.json.JSONObject userData=media.optJSONObject("UserData");
+        String subscriptionStatus=media.optString("SubscriptionStatus");
+        if(!subscriptionStatus.isEmpty()){
+            TextView statusBadge=text(subscriptionStatus,10,Color.WHITE);statusBadge.setGravity(android.view.Gravity.CENTER);statusBadge.setPadding(dp(6),0,dp(6),0);statusBadge.setBackground(shape(ACCENT,0));FrameLayout.LayoutParams statusBounds=new FrameLayout.LayoutParams(-2,dp(24),android.view.Gravity.TOP|android.view.Gravity.RIGHT);statusBounds.setMargins(0,dp(6),dp(6),0);artwork.addView(statusBadge,statusBounds);badge=statusBadge;
+            artworkScaleUpdates.add(()->{float scale=artworkScale(artwork,scaleBaseWidthDp);statusBadge.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,10*scale);statusBadge.setPadding(Math.round(6*scale),0,Math.round(6*scale),0);statusBounds.height=Math.round(24*scale);statusBounds.topMargin=Math.round(6*scale);statusBounds.rightMargin=Math.round(6*scale);statusBadge.setLayoutParams(statusBounds);});
+        }
         if("Series".equalsIgnoreCase(media.optString("Type"))&&userData!=null){
             int count=episodeCountMode.equals("total")?media.optInt("RecursiveItemCount",userData.optInt("UnplayedItemCount")):userData.optInt("UnplayedItemCount");
             if(count>0){
