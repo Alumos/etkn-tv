@@ -1,0 +1,140 @@
+{
+  "date": "2026-11-17",
+  "scope": "ETKN-TV 高评分新鲜番茄图标；补分继续搁置",
+  "local": {
+    "version": "0.1.127",
+    "versionCode": 128,
+    "sourceImageSha256": "019754d6f5b7484ce1fffc0a97417d1f572c90b94ee2402f4dfd9cd8387e70ec",
+    "lowImageUnchanged": true,
+    "scoreSelectionSourceUnchanged": true,
+    "packagedImages": {
+      "fresh_tomato": {
+        "entry": "res/fC.png",
+        "size": [
+          1024,
+          1024
+        ],
+        "sourceSha256": "019754d6f5b7484ce1fffc0a97417d1f572c90b94ee2402f4dfd9cd8387e70ec",
+        "packagedSha256": "a8845c10c06deeee2a0663d78f3bd2f03cf2008d4b9970643819fd72eb46c8d8",
+        "visiblePixelsAndAlphaEqual": true,
+        "rawRgbaPixelsEqual": true
+      },
+      "rotten_tomato": {
+        "entry": "res/aj.png",
+        "size": [
+          500,
+          500
+        ],
+        "sourceSha256": "9ecad9a70c2f927df89d8926e9c988d4e1b18f36fc432ac408b52ff59a8705b6",
+        "packagedSha256": "94e60753aaee2cd3fca565383de84d45c9a69dbcb8642cacff33c2a438170a24",
+        "visiblePixelsAndAlphaEqual": true,
+        "rawRgbaPixelsEqual": false
+      }
+    },
+    "unitTests": {
+      "suites": 27,
+      "tests": 126,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "lint": {
+      "errors": 0,
+      "warnings": 109
+    },
+    "nativeLibrariesUnchanged": 20,
+    "licenseFilesUnchanged": 25,
+    "apk": {
+      "size": 70082113,
+      "sha256": "3ddb4a7a1826d871bccaad8c59bcb4a92aa96aa28543df3e52ea30a7b4e21a61"
+    },
+    "manifestMatchesApk": true,
+    "deviceVisualValidation": false
+  },
+  "signatureCertificateSha256": "e02d42443875c3631be48199e0df419b0570fcc421be7ff2b620f4c643e67bd7",
+  "apkMetadata": {
+    "packageName": "xyz.etkn.tv",
+    "versionName": "0.1.127",
+    "versionCode": 128,
+    "minSdk": 24,
+    "targetSdk": 35
+  },
+  "draftVerification": {
+    "releaseId": 448137849,
+    "tag": "v0.1.127",
+    "sourceCommit": "46c85b079553e0fbe8e9a7daf1ea3c2332e3dd5f",
+    "assets": {
+      "etkn-tv-0.1.127.apk": {
+        "size": 70082113,
+        "sha256": "3ddb4a7a1826d871bccaad8c59bcb4a92aa96aa28543df3e52ea30a7b4e21a61"
+      },
+      "RELEASE_NOTES.md": {
+        "size": 65,
+        "sha256": "9627de2b901193c47b2f268a0ab51d0cb1d48006b04c71103628e9b6374ee195"
+      },
+      "SHA256SUMS.txt": {
+        "size": 247,
+        "sha256": "5214dac0d2ed73873432c945b58737a9aa948530fb98ba7af239fdfbc09320fa"
+      },
+      "update.json": {
+        "size": 376,
+        "sha256": "9d437b39574186e0e73647481f6aa0c4b93dfe0a310df6b6b92f8cd5b8912550"
+      }
+    },
+    "bodyMatches": true,
+    "assetHashesMatch": true,
+    "draft": true
+  },
+  "release": {
+    "releaseId": 448137849,
+    "url": "https://github.com/hbq0405/etkn-tv/releases/tag/v0.1.127",
+    "tag": "v0.1.127",
+    "draft": false,
+    "prerelease": false,
+    "isLatest": true,
+    "publishedAt": "2026-11-17T04:36:33Z",
+    "sourceCommit": "46c85b079553e0fbe8e9a7daf1ea3c2332e3dd5f",
+    "tagObject": "e832937da720704fce5ce9ac3fe921bfed3e4e09",
+    "assets": {
+      "etkn-tv-0.1.127.apk": {
+        "size": 70082113,
+        "sha256": "3ddb4a7a1826d871bccaad8c59bcb4a92aa96aa28543df3e52ea30a7b4e21a61"
+      },
+      "RELEASE_NOTES.md": {
+        "size": 65,
+        "sha256": "9627de2b901193c47b2f268a0ab51d0cb1d48006b04c71103628e9b6374ee195"
+      },
+      "SHA256SUMS.txt": {
+        "size": 247,
+        "sha256": "5214dac0d2ed73873432c945b58737a9aa948530fb98ba7af239fdfbc09320fa"
+      },
+      "update.json": {
+        "size": 376,
+        "sha256": "9d437b39574186e0e73647481f6aa0c4b93dfe0a310df6b6b92f8cd5b8912550"
+      }
+    },
+    "body": "- 更新高评分的新鲜番茄图标，与 Web 保持一致。\n",
+    "anonymousAssetsVerified": 4,
+    "latestManifestByteIdentical": true,
+    "remoteRefsAtPublication": {
+      "refs/heads/main": "46c85b079553e0fbe8e9a7daf1ea3c2332e3dd5f",
+      "refs/tags/v0.1.127": "e832937da720704fce5ce9ac3fe921bfed3e4e09",
+      "refs/tags/v0.1.127^{}": "46c85b079553e0fbe8e9a7daf1ea3c2332e3dd5f"
+    }
+  },
+  "telegram": {
+    "runId": 44018364178,
+    "url": "https://github.com/hbq0405/etkn-tv/actions/runs/44018364178",
+    "headSha": "46c85b079553e0fbe8e9a7daf1ea3c2332e3dd5f",
+    "conclusion": "success",
+    "runAttempt": 1,
+    "messageId": 65299,
+    "deliveryReceiptCount": 1,
+    "rerun": false
+  },
+  "deviceValidation": {
+    "installedThisTurn": false,
+    "physicalVisualValidated": false
+  },
+  "privateETKvNextRepositoryPushed": false
+}
