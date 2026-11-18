@@ -36,6 +36,7 @@ abstract class TvActivity extends Activity {
     private boolean accountPreferenceLoading;
     private final java.util.ArrayList<java.lang.ref.WeakReference<TextView>> themedTexts=new java.util.ArrayList<>();
     private final java.util.ArrayList<java.lang.ref.WeakReference<android.app.AlertDialog>> themedDialogs=new java.util.ArrayList<>();
+    private final java.util.ArrayList<java.lang.ref.WeakReference<android.app.AlertDialog>> choiceDialogs=new java.util.ArrayList<>();
     private final Runnable appearancePoll=new Runnable(){@Override public void run(){refreshAppearance();refreshAccountPreference();noticeTimer.postDelayed(this,3000);}};
     private void refreshAccountPreference(){if(!appearanceForeground||accountPreferenceLoading||api.token.isEmpty())return;accountPreferenceLoading=true;IO.execute(()->{boolean changed=false;try{changed=api.syncAccountPreference();}catch(Exception ignored){}boolean result=changed;runOnUiThread(()->{accountPreferenceLoading=false;if(!isDestroyed()&&appearanceForeground&&result)accountPreferencesChanged();});});}
     void accountPreferencesChanged(){}
@@ -43,6 +44,9 @@ abstract class TvActivity extends Activity {
         if(this instanceof PlayerActivity||this instanceof DetailActivity){super.setContentView(view);return;}
         FrameLayout stage=new FrameLayout(this);serverBackground=new AppearanceBackground(this);stage.addView(serverBackground,new FrameLayout.LayoutParams(-1,-1));view.setBackgroundColor(Color.TRANSPARENT);stage.addView(view,new FrameLayout.LayoutParams(-1,-1));super.setContentView(stage);
         updateAppearanceViews();
+    }
+    void wallpaperPanel(View panel){
+        if(serverBackground!=null)serverBackground.panel(panel);else panel.setBackground(shape(PANEL,0));
     }
     private void refreshAppearance(){
         if(!appearanceForeground||appearanceLoading||TvAppearance.saving||api.token.isEmpty()||TvAppearance.locked(this,api.server))return;
@@ -64,12 +68,24 @@ abstract class TvActivity extends Activity {
         themedTexts.removeIf(reference->{TextView view=reference.get();if(view==null)return true;Object color=view.getTag(R.id.appearance_text);if(color instanceof Integer)view.setTextColor(resolveColor((Integer)color));return false;});
         if(serverBackground!=null)serverBackground.update();updateAppearanceTree(getWindow().getDecorView());
         themedDialogs.removeIf(reference->{android.app.AlertDialog dialog=reference.get();if(dialog==null||!dialog.isShowing())return true;updateDialogAppearance(dialog);return false;});
+        choiceDialogs.removeIf(reference->{android.app.AlertDialog dialog=reference.get();if(dialog==null||!dialog.isShowing())return true;updateChoiceDialog(dialog);return false;});
         if(appNotice!=null&&appNotice.getVisibility()==View.VISIBLE)TvNotice.style(appNotice,this);
     }
     android.app.AlertDialog.Builder dialogBuilder(){return new android.app.AlertDialog.Builder(this,appearanceDark()?android.R.style.Theme_Material_Dialog_Alert:android.R.style.Theme_Material_Light_Dialog_Alert);}
     void themeDialog(android.app.AlertDialog dialog){
         themedDialogs.add(new java.lang.ref.WeakReference<>(dialog));updateDialogAppearance(dialog);
         ListView list=dialog.getListView();if(list!=null)list.setOnHierarchyChangeListener(new ViewGroup.OnHierarchyChangeListener(){@Override public void onChildViewAdded(View parent,View child){themeDialogTree(child);}@Override public void onChildViewRemoved(View parent,View child){}});
+    }
+    void themeChoiceDialog(android.app.AlertDialog dialog){
+        choiceDialogs.add(new java.lang.ref.WeakReference<>(dialog));updateChoiceDialog(dialog);
+    }
+    private void updateChoiceDialog(android.app.AlertDialog dialog){
+        android.view.Window window=dialog.getWindow();if(window==null)return;
+        GradientDrawable background=shape(PANEL,0);background.setCornerRadius(dp(18));window.setBackgroundDrawable(background);
+        window.setElevation(dp(8)*TvAppearance.shadow());
+        View decor=window.getDecorView();
+        if(android.os.Build.VERSION.SDK_INT>=28){int color=TvAppearance.shadowColor(appearanceDark());decor.setOutlineAmbientShadowColor(color);decor.setOutlineSpotShadowColor(color);}
+        updateAppearanceTree(decor);
     }
     private void updateDialogAppearance(android.app.AlertDialog dialog){
         if(dialog.getWindow()==null)return;android.graphics.drawable.GradientDrawable background=shape(TvAppearance.surface(appearanceDark()),0);background.setCornerRadius(dp(18));dialog.getWindow().setBackgroundDrawable(background);dialog.getWindow().setElevation(dp(8)*TvAppearance.shadow());

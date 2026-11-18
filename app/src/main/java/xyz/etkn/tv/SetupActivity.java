@@ -33,10 +33,10 @@ public final class SetupActivity extends TvActivity {
     private void showLogin(boolean addAccount){
         if(!addAccount&&(LoginGate.requiresPicker(this,api)||api.session.persist()==SessionStore.PERSIST_ACCOUNT&&!api.session.accounts().isEmpty())){showPicker();return;}
         if(!api.token.isEmpty()&&!addAccount){openHome();return;}
-        screen(addAccount?"登录新用户":"连接你的 ETKN",addAccount?"为当前 ETKN 媒体服务器添加登录用户。":"自动发现局域网 ETKN 媒体服务器，遥控器点选后登录。");
+        screen(addAccount?"登录新用户":"连接你的 ETKN","");
         installServerBrand();loadServerBrand(api.session.server());
         content.setGravity(android.view.Gravity.CENTER);content.setPadding(dp(12),dp(16),dp(12),dp(20));
-        loginPanel=column();loginPanel.setPadding(dp(28),dp(20),dp(28),dp(18));loginPanel.setBackground(shape(PANEL,0));shadow(loginPanel,8);
+        loginPanel=column();loginPanel.setPadding(dp(24),dp(20),dp(24),dp(20));wallpaperPanel(loginPanel);shadow(loginPanel,8);
         content.addView(loginPanel,new LinearLayout.LayoutParams(Math.min(dp(560),availableWidth(96)),-2));
         if(!addAccount){nav("重新搜索",this::scan);nav("关于 / 检查更新",()->open(SettingsActivity.class));}
         if(!addAccount){
@@ -48,9 +48,9 @@ public final class SetupActivity extends TvActivity {
             }
         }
         servers=column();loginPanel.addView(servers);
-        server=input("媒体服务器地址，例如 192.168.1.10:8097",false);server.setText(api.session.server());server.setOnFocusChangeListener((view,focused)->{if(!focused)loadServerBrand(server.getText().toString());});loginPanel.addView(server);
+        server=input("媒体服务器地址，例如 192.168.1.10:8097",false);server.setText(api.session.server());server.setOnFocusChangeListener((view,focused)->{if(!focused)loadServerBrand(server.getText().toString());});loginPanel.addView(server,loginFieldBounds());
         if(addAccount){server.setFocusable(false);server.setFocusableInTouchMode(false);server.setEnabled(false);servers.setVisibility(android.view.View.GONE);loginPanel.addView(text("账号仅保存在当前 ETKN 媒体服务器下，不支持多服务器账号切换。",13,MUTED));}
-        username=input("用户名",false);loginPanel.addView(username);password=input("密码",true);loginPanel.addView(password);
+        username=input("用户名",false);loginPanel.addView(username,loginFieldBounds());password=input("密码",true);loginPanel.addView(password,loginFieldBounds());
         loginPanel.addView(button("连接并登录",()->{
             status.setText("正在登录…");String address=server.getText().toString(),name=username.getText().toString(),pass=password.getText().toString();
             password.setText("");int generation=LoginGate.generation();
@@ -60,11 +60,14 @@ public final class SetupActivity extends TvActivity {
             });
         }));if(!addAccount)scan();
     }
+    private LinearLayout.LayoutParams loginFieldBounds(){
+        LinearLayout.LayoutParams bounds=new LinearLayout.LayoutParams(-1,dp(48));bounds.setMargins(0,dp(6),0,dp(6));return bounds;
+    }
     private void openHome(){LoginGate.satisfy();startActivity(new Intent(this,HomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();}
     private void installServerBrand(){
         if(root.getChildCount()>0)root.removeViewAt(0);
         LinearLayout brand=row();brand.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        serverLogo=new ImageView(this);serverLogo.setImageResource(R.drawable.etkn_logo_tint);serverLogo.setContentDescription("ETKN");brand.addView(serverLogo,new LinearLayout.LayoutParams(dp(32),dp(32)));
+        serverLogo=new ImageView(this);serverLogo.setImageResource(R.drawable.etkn_logo_tint);serverLogo.setContentDescription("ETKN");brand.addView(serverLogo,new LinearLayout.LayoutParams(dp(28),dp(28)));
         serverBrand=text("ETKN 媒体服务器",14,ACCENT);serverBrand.setTypeface(null,android.graphics.Typeface.BOLD);serverBrand.setSingleLine(true);serverBrand.setEllipsize(android.text.TextUtils.TruncateAt.END);LinearLayout.LayoutParams label=new LinearLayout.LayoutParams(-2,dp(32));label.setMargins(dp(10),0,0,0);brand.addView(serverBrand,label);
         root.addView(brand,0,new LinearLayout.LayoutParams(-1,dp(38)));appearanceChanged();
     }
@@ -79,10 +82,10 @@ public final class SetupActivity extends TvActivity {
     private void showServerBrand(String name){serverBrandGeneration++;if(serverBrand!=null)serverBrand.setText(name==null||name.isBlank()?"ETKN 媒体服务器":name.trim());}
     /** 用户选择框：横向展示已保存用户，下方独立提供登录新用户入口。 */
     private void showPicker(){
-        screen("选择登录用户","点选要进入的用户，也可以登录新用户。");
+        screen("选择登录用户","");
         installServerBrand();loadServerBrand(api.session.server());
         content.setGravity(android.view.Gravity.CENTER);
-        LinearLayout panel=column();panel.setBackground(shape(PANEL,0));shadow(panel,8);panel.setPadding(dp(30),dp(24),dp(30),dp(20));panel.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+        LinearLayout panel=column();wallpaperPanel(panel);shadow(panel,8);panel.setPadding(dp(24),dp(20),dp(24),dp(20));panel.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
         FocusScroll.Row scroll=new FocusScroll.Row(this);scroll.setHorizontalScrollBarEnabled(false);scroll.setClipToPadding(false);scroll.setPadding(dp(12),dp(12),dp(12),dp(12));
         LinearLayout users=row();users.setGravity(android.view.Gravity.CENTER_VERTICAL);scroll.addView(users);
         Button newUser=button("登录新用户",()->startActivity(new Intent(this,SetupActivity.class).putExtra(EXTRA_ADD_ACCOUNT,true)));

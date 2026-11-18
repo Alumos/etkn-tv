@@ -143,16 +143,15 @@ public final class PlayerActivity extends TvActivity {
         danmakuSettingsButton=button("弹幕设置",this::showDanmakuSettings);
         nextButton=button("下一集",this::advanceQueue);nextButton.setVisibility(View.GONE);
         actions.addView(audioButton);actions.addView(subtitleButton);actions.addView(nextButton);actions.addView(bitrateButton);actions.addView(speedButton);actions.addView(danmakuSettingsButton);actions.addView(decoderButton);
-        int controlWidth=Math.max(1,(Math.min(900,getResources().getConfiguration().screenWidthDp-48)-24)/actions.getChildCount()-4);
         for(int i=0;i<actions.getChildCount();i++){
             Button control=(Button)actions.getChildAt(i);control.setBackground(transparentFocusBackground());
             control.setTextSize(12);control.setSingleLine(true);control.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            control.setMinWidth(0);control.setMinimumWidth(0);control.setMinHeight(dp(36));control.setMinimumHeight(dp(36));
-            control.setPadding(dp(6),dp(4),dp(6),dp(4));
-            LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(dp(controlWidth),dp(36));cell.setMargins(dp(2),dp(4),dp(2),dp(4));control.setLayoutParams(cell);
+            control.setMinWidth(dp(64));control.setMinimumWidth(dp(64));control.setMaxWidth(dp(160));control.setMinHeight(dp(36));control.setMinimumHeight(dp(36));
+            control.setPadding(dp(10),dp(4),dp(10),dp(4));
+            LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(-2,dp(36));cell.setMargins(dp(2),dp(4),dp(2),dp(4));control.setLayoutParams(cell);
         }
-        actions.setGravity(Gravity.CENTER);HorizontalScrollView actionScroll=new FocusScroll.Row(this);actionScroll.setHorizontalScrollBarEnabled(false);actionScroll.setFillViewport(true);actionScroll.addView(actions);controls.addView(actionScroll);
-        FrameLayout.LayoutParams overlay=new FrameLayout.LayoutParams(Math.min(dp(900),getResources().getDisplayMetrics().widthPixels-dp(48)),-2,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);overlay.bottomMargin=dp(70);stage.addView(controls,overlay);controls.setVisibility(View.GONE);
+        actions.setGravity(Gravity.CENTER);HorizontalScrollView actionScroll=new FocusScroll.Row(this);actionScroll.setFocusable(false);actionScroll.setHorizontalScrollBarEnabled(false);actionScroll.setFillViewport(true);actionScroll.setClipToPadding(false);actionScroll.setPadding(dp(8),0,dp(8),0);actionScroll.addView(actions);controls.addView(actionScroll,new LinearLayout.LayoutParams(-1,-2));
+        FrameLayout.LayoutParams overlay=new FrameLayout.LayoutParams(Math.max(1,Math.min(dp(900),getResources().getDisplayMetrics().widthPixels-dp(48))),-2,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);overlay.bottomMargin=dp(70);stage.addView(controls,overlay);controls.setVisibility(View.GONE);
         videoInfo=text("",14,TEXT);videoInfo.setPadding(dp(16),dp(12),dp(16),dp(12));videoInfo.setBackground(selectionBackground());videoInfo.setVisibility(View.GONE);androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(videoInfo,10,14,1,android.util.TypedValue.COMPLEX_UNIT_SP);FrameLayout.LayoutParams mediaLayout=new FrameLayout.LayoutParams(dp(Math.min(400,getResources().getConfiguration().screenWidthDp*2/5)),-1,Gravity.TOP|Gravity.START);mediaLayout.setMargins(dp(28),dp(88),0,dp(180));stage.addView(videoInfo,mediaLayout);
         skipButton=button("跳过片头",this::skipSegment);shadow(skipButton,0);TvNotice.style(skipButton,this);skipButton.setOnFocusChangeListener((v,focused)->{v.setScaleX(focused?FOCUS_SCALE:1f);v.setScaleY(focused?FOCUS_SCALE:1f);});skipButton.setVisibility(View.GONE);FrameLayout.LayoutParams skipLayout=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL);skipLayout.topMargin=dp(48);stage.addView(skipButton,skipLayout);
         status=text("",15,android.graphics.Color.WHITE);TvNotice.style(status,this);status.setVisibility(View.GONE);FrameLayout.LayoutParams statusLayout=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL);statusLayout.topMargin=dp(48);stage.addView(status,statusLayout);

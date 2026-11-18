@@ -38,29 +38,40 @@ public final class MusicPlayerActivity extends TvActivity implements MusicPlayba
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         root=column();root.setPadding(dp(32),dp(12),dp(32),dp(18));
-        root.addView(text("ETKN  /  正在播放",14,ACCENT));
         LinearLayout body=row();root.addView(body,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout left=column();left.setGravity(Gravity.CENTER_HORIZONTAL);left.setPadding(dp(16),dp(2),dp(24),dp(8));body.addView(left,new LinearLayout.LayoutParams(0,-1,1.1f));
         FrameLayout artwork=new FrameLayout(this);artwork.setBackground(shape(PANEL,0));artwork.setClipToOutline(true);artwork.setForeground(Images.border(dp(12)));shadow(artwork,8);
         TextView placeholder=text("♪",72,ACCENT);placeholder.setGravity(Gravity.CENTER);artwork.addView(placeholder,new FrameLayout.LayoutParams(-1,-1));cover=new ImageView(this);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);Images.rounded(cover,dp(12));artwork.addView(cover,new FrameLayout.LayoutParams(-1,-1));
-        int size=Math.max(80,Math.min(260,getResources().getConfiguration().screenHeightDp-300));left.addView(artwork,new LinearLayout.LayoutParams(dp(size),dp(size)));
+        int size=Math.max(1,Math.min(260,getResources().getConfiguration().screenHeightDp-240));left.addView(artwork,new LinearLayout.LayoutParams(dp(size),dp(size)));
         name=text("选择一首歌",23,TEXT);name.setTypeface(null,Typeface.BOLD);name.setSingleLine(true);name.setEllipsize(android.text.TextUtils.TruncateAt.END);name.setGravity(Gravity.CENTER);left.addView(name,new LinearLayout.LayoutParams(-1,dp(40)));
         album=text("",13,MUTED);artist=text("",13,MUTED);
         for(TextView view:new TextView[]{album,artist}){view.setGravity(Gravity.CENTER);view.setSingleLine(true);view.setEllipsize(android.text.TextUtils.TruncateAt.END);view.setPadding(0,0,0,0);left.addView(view,new LinearLayout.LayoutParams(-1,dp(24)));}
         seek=new SeekBar(this);seek.setMax(1000);seek.setFocusable(false);seek.setFocusableInTouchMode(false);seek.setContentDescription("播放进度");left.addView(seek,new LinearLayout.LayoutParams(-1,dp(34)));
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){@Override public void onProgressChanged(SeekBar bar,int value,boolean user){if(user&&!updating)playback.seek(playback.duration()*value/1000);}@Override public void onStartTrackingTouch(SeekBar bar){}@Override public void onStopTrackingTouch(SeekBar bar){}});
         time=text("0:00 / 0:00",12,MUTED);time.setGravity(Gravity.CENTER);left.addView(time,new LinearLayout.LayoutParams(-1,dp(25)));
-        controls=row();controls.setGravity(Gravity.CENTER);controls.addView(control("previous","上一首",()->playback.next(-1,false)));pause=control("play","播放",()->playback.toggle());controls.addView(pause);controls.addView(control("next","下一首",()->playback.next(1,false)));mode=control("sequence","顺序播放",this::chooseMode);controls.addView(mode);controls.addView(control("playlist","保存到歌单",()->{JSONObject item=playback.queue.current();if(item!=null)MusicActions.playlist(this,item,()->{});}));lyricToggle=control("lyrics","显示歌词",this::toggleLyrics);controls.addView(lyricToggle);left.addView(controls);
+        controls=row();controls.setGravity(Gravity.CENTER);controls.addView(control("previous","上一首",()->playback.next(-1,false)));pause=control("play","播放",()->playback.toggle());controls.addView(pause);controls.addView(control("next","下一首",()->playback.next(1,false)));mode=control("sequence","顺序播放",this::chooseMode);controls.addView(mode);controls.addView(control("playlist","保存到歌单",()->{JSONObject item=playback.queue.current();if(item!=null)MusicActions.playlist(this,item,()->{});}));lyricToggle=control("lyrics","显示歌词",this::toggleLyrics);controls.addView(lyricToggle);
+        HorizontalScrollView controlScroll=new FocusScroll.Row(this);controlScroll.setFocusable(false);controlScroll.setFillViewport(true);controlScroll.setHorizontalScrollBarEnabled(false);controlScroll.addView(controls,new FrameLayout.LayoutParams(-2,-2));left.addView(controlScroll,new LinearLayout.LayoutParams(-1,-2));
+        left.addOnLayoutChangeListener((view,l,t,r,b,oldL,oldT,oldR,oldB)->{
+            int width=r-l-left.getPaddingLeft()-left.getPaddingRight();if(width<=0)return;
+            int height=b-t-left.getPaddingTop()-left.getPaddingBottom();
+            int art=Math.max(1,Math.min(dp(260),Math.min(width,height-dp(40+24+24+34+25+48+16))));
+            if(artwork.getLayoutParams().width!=art){artwork.getLayoutParams().width=art;artwork.getLayoutParams().height=art;artwork.requestLayout();}
+            int cell=Math.max(dp(40),Math.min(dp(48),width/controls.getChildCount()-2*dp(3)));
+            for(int i=0;i<controls.getChildCount();i++)sizeControl((Button)controls.getChildAt(i),cell);
+        });
         LinearLayout right=column();right.setPadding(dp(12),dp(10),dp(12),dp(8));LinearLayout.LayoutParams bounds=new LinearLayout.LayoutParams(0,-1,1);bounds.setMargins(dp(14),dp(8),dp(8),dp(8));body.addView(right,bounds);
         queueTitle=text("播放列表",19,TEXT);queueTitle.setPadding(0,0,0,dp(8));right.addView(queueTitle);
         queue=new ListView(this);queue.setDivider(null);queue.setDividerHeight(dp(10));queue.setPadding(dp(12),dp(12),dp(12),dp(12));queue.setClipChildren(true);queue.setClipToPadding(true);queue.setSelector(queueFocusSelector());queue.setOnFocusChangeListener((view,focused)->{android.graphics.drawable.Drawable selector=queue.getSelector();if(selector!=null)selector.setVisible(focused,false);});queue.setItemsCanFocus(false);queue.setCacheColorHint(android.graphics.Color.TRANSPARENT);right.addView(queue,new LinearLayout.LayoutParams(-1,0,1));
         adapter=new BaseAdapter(){@Override public int getCount(){return playback.queue.items.size();}@Override public Object getItem(int position){return playback.queue.items.get(position);}@Override public long getItemId(int position){return position;}
             @Override public View getView(int position,View recycled,ViewGroup parent){
-                JSONObject item=playback.queue.items.get(position);boolean current=position==playback.queue.index;LinearLayout row=row();row.setPadding(dp(8),dp(8),dp(8),dp(8));row.setGravity(Gravity.CENTER_VERTICAL);row.setBackground(shape(current?SOFT:PANEL,0));
+                JSONObject item=playback.queue.items.get(position);boolean current=position==playback.queue.index;LinearLayout row=row();row.setPaddingRelative(dp(10),dp(7),dp(10),dp(7));row.setGravity(Gravity.CENTER_VERTICAL);row.setBaselineAligned(false);row.setMinimumHeight(dp(60));row.setBackground(shape(current?SOFT:PANEL,0));
                 ImageView image=new ImageView(MusicPlayerActivity.this);image.setScaleType(ImageView.ScaleType.CENTER_CROP);Images.rounded(image,dp(8));row.addView(image,new LinearLayout.LayoutParams(dp(44),dp(44)));Images.load(api,MusicViews.artwork(api,item,128),image);
-                LinearLayout labels=column();labels.setPadding(dp(12),0,0,0);row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));TextView title=text((current?"♫  ":(position+1)+".  ")+item.optString("Name"),14,current?ACCENT:TEXT);title.setSingleLine(true);title.setEllipsize(android.text.TextUtils.TruncateAt.END);labels.addView(title);TextView detail=text(MusicViews.artists(item),12,MUTED);detail.setSingleLine(true);detail.setEllipsize(android.text.TextUtils.TruncateAt.END);labels.addView(detail);
-                LinearLayout trailing=row();trailing.setGravity(Gravity.CENTER_VERTICAL);if(current&&playback.playing()){SpectrumIcon spectrum=new SpectrumIcon();spectrum.setContentDescription("正在播放");trailing.addView(spectrum,new LinearLayout.LayoutParams(dp(24),dp(24)));}
-                TextView duration=text(MusicViews.time(item.optLong("RunTimeTicks")/10000),13,MUTED);duration.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);duration.setSingleLine(true);duration.setMinWidth(dp(48));trailing.addView(duration);row.addView(trailing);return row;
+                LinearLayout labels=column();labels.setPaddingRelative(dp(10),0,dp(6),0);row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));TextView title=text(item.optString("Name"),14,current?ACCENT:TEXT);title.setPadding(0,0,0,0);title.setSingleLine(true);title.setEllipsize(android.text.TextUtils.TruncateAt.END);labels.addView(title);TextView detail=text(MusicViews.artists(item),12,MUTED);detail.setPadding(0,dp(2),0,0);detail.setSingleLine(true);detail.setEllipsize(android.text.TextUtils.TruncateAt.END);labels.addView(detail);
+                View indicator;
+                if(current&&playback.playing()){indicator=new SpectrumIcon();indicator.setContentDescription("正在播放");}
+                else{TextView order=text(Integer.toString(position+1),11,current?ACCENT:MUTED);order.setPadding(0,0,0,0);order.setSingleLine(true);order.setEllipsize(android.text.TextUtils.TruncateAt.END);order.setGravity(Gravity.CENTER);indicator=order;}
+                LinearLayout.LayoutParams slot=new LinearLayout.LayoutParams(dp(28),dp(24));slot.setMarginEnd(dp(6));row.addView(indicator,slot);
+                TextView duration=text(MusicViews.time(item.optLong("RunTimeTicks")/10000),13,MUTED);duration.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);duration.setFontFeatureSettings("tnum");duration.setSingleLine(true);row.addView(duration,new LinearLayout.LayoutParams(dp(54),-2));return row;
             }};queue.setAdapter(adapter);queue.setOnItemClickListener((parent,view,index,id)->playback.playAt(index));queue.setOnItemLongClickListener((parent,view,index,id)->{queueActions(index);return true;});
         more=control("load","加载后续歌曲",()->playback.loadMore());queueFooter=row();queueFooter.setGravity(Gravity.CENTER);queueFooter.addView(more);right.addView(queueFooter);
         lyricPanel=column();lyricPanel.setVisibility(View.GONE);right.addView(lyricPanel,new LinearLayout.LayoutParams(-1,0,1));
@@ -118,8 +129,12 @@ public final class MusicPlayerActivity extends TvActivity implements MusicPlayba
     }
     private Button control(String icon,String label,Runnable action){
         Button view=button("",action);view.setBackground(transparentFocusBackground());view.setMinWidth(0);view.setMinimumWidth(0);view.setMinHeight(0);view.setMinimumHeight(0);
-        int size=Math.max(32,Math.min(48,(getResources().getConfiguration().screenWidthDp/2-100)/6-4));view.setPadding(dp((size-24)/2f),dp((size-24)/2f),dp((size-24)/2f),dp((size-24)/2f));
-        LinearLayout.LayoutParams bounds=new LinearLayout.LayoutParams(dp(size),dp(size));bounds.setMargins(dp(3),dp(8),dp(3),dp(8));view.setLayoutParams(bounds);controlIcon(view,icon,label);return view;
+        LinearLayout.LayoutParams bounds=new LinearLayout.LayoutParams(0,0);bounds.setMargins(dp(3),dp(8),dp(3),dp(8));view.setLayoutParams(bounds);sizeControl(view,dp(48));controlIcon(view,icon,label);return view;
+    }
+    private void sizeControl(Button view,int size){
+        LinearLayout.LayoutParams bounds=(LinearLayout.LayoutParams)view.getLayoutParams();if(bounds.width==size&&bounds.height==size)return;
+        int inset=(size-dp(24))/2,remainder=size-dp(24)-inset;
+        view.setPadding(inset,inset,remainder,remainder);bounds.width=size;bounds.height=size;view.setLayoutParams(bounds);
     }
     private void controlIcon(Button view,String icon,String label){MediaActionIcon drawable=new MediaActionIcon(icon,false);drawable.setBounds(0,0,dp(24),dp(24));view.setCompoundDrawables(drawable,null,null,null);tintControl(view);view.setContentDescription(label);}
     private void tintControl(Button view){android.graphics.drawable.Drawable drawable=view.getCompoundDrawables()[0];if(drawable!=null)drawable.setColorFilter(new android.graphics.PorterDuffColorFilter(resolveColor(TEXT),android.graphics.PorterDuff.Mode.SRC_IN));view.invalidate();}

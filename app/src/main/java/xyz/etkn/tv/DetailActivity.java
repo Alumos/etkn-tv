@@ -40,7 +40,7 @@ public final class DetailActivity extends TvActivity {
     private Button overviewMore;
     private String renderedLogo="";
     private ImageView detailTomatoIcon,detailDoubanIcon,detailImdbIcon,detailTmdbIcon;
-    private TextView detailTitle,detailDouban,detailTmdb,detailImdb,detailTomatoes,detailYear,detailDuration,detailRating,detailCategories,detailOverview,detailTagline;
+    private TextView detailTitle,detailDouban,detailTmdb,detailImdb,detailTomatoes,detailYear,detailDuration,detailRating,detailOverview,detailTagline;
     private Button cloudButton,episodesButton;
     private boolean episodePicker;
     private boolean canDiscover,cloudSearching;
@@ -79,7 +79,7 @@ public final class DetailActivity extends TvActivity {
     private Button seriesButton;
     private final List<JSONObject> itemCollections=new ArrayList<>();
     private String renderedFacets="";
-    private HorizontalScrollView menu,castScroll,ratingScroll;
+    private HorizontalScrollView menu,castScroll,ratingScroll,factsScroll,facetScroll;
     private View castEntry;
     private View previousFocus;
     private int mainMenuTransitionKey;
@@ -195,9 +195,8 @@ public final class DetailActivity extends TvActivity {
         facetButtons=row();facetButtons.setGravity(Gravity.CENTER_VERTICAL);facts.addView(seriesButton);
         studioButtons=row();studioButtons.setGravity(Gravity.CENTER_VERTICAL);facts.addView(studioButtons);
         HorizontalScrollView metadataScroll=new FocusScroll.Row(this);ratingScroll=metadataScroll;metadataScroll.setHorizontalScrollBarEnabled(false);metadataScroll.addView(metadata);detailCopy.addView(metadataScroll,new LinearLayout.LayoutParams(-1,dp(36)));
-        HorizontalScrollView factsScroll=new FocusScroll.Row(this);factsScroll.setHorizontalScrollBarEnabled(false);factsScroll.addView(facts);detailCopy.addView(factsScroll,new LinearLayout.LayoutParams(-1,dp(36)));
-        HorizontalScrollView facetScroll=new FocusScroll.Row(this);facetScroll.setHorizontalScrollBarEnabled(false);facetScroll.addView(facetButtons);detailCopy.addView(facetScroll,new LinearLayout.LayoutParams(-1,dp(36)));
-        detailCategories=text("",14,MUTED);detailCopy.addView(detailCategories);
+        factsScroll=new FocusScroll.Row(this);factsScroll.setHorizontalScrollBarEnabled(false);factsScroll.addView(facts);detailCopy.addView(factsScroll,new LinearLayout.LayoutParams(-1,dp(36)));
+        facetScroll=new FocusScroll.Row(this);facetScroll.setHorizontalScrollBarEnabled(false);facetScroll.addView(facetButtons);detailCopy.addView(facetScroll,new LinearLayout.LayoutParams(-1,dp(36)));
         LinearLayout actions=row();
         playButton=actionButton("play","播放",()->play(false));playButton.setId(View.generateViewId());playButton.setEnabled(false);actions.addView(playButton);
         restartButton=actionButton("restart","从头播放",()->play(true));restartButton.setVisibility(View.GONE);actions.addView(restartButton);
@@ -261,9 +260,9 @@ public final class DetailActivity extends TvActivity {
         detailTitle.setText("Episode".equals(item.optString("Type"))&&item.has("IndexNumber")?DetailPresentation.episodeNumber(item)+" · "+EtknApi.title(item):EtknApi.title(item));updateRating(detailDouban,detailDoubanIcon,"DoubanRating");updateRating(detailTmdb,detailTmdbIcon,"TMDbRating");updateRating(detailImdb,detailImdbIcon,"IMDbRating");
         String tomato=DetailPresentation.tomatoRating(item);detailTomatoes.setText(" "+tomato+"    ");detailTomatoes.setVisibility(tomato.equals("–")?View.GONE:View.VISIBLE);detailTomatoIcon.setVisibility(detailTomatoes.getVisibility());detailTomatoIcon.setImageDrawable(tomatoMark(item));
         ratingScroll.setVisibility(detailDouban.getVisibility()==View.VISIBLE||detailTmdb.getVisibility()==View.VISIBLE||detailImdb.getVisibility()==View.VISIBLE||detailTomatoes.getVisibility()==View.VISIBLE?View.VISIBLE:View.GONE);
-        String year=item.optString("ProductionYear"),duration=DetailPresentation.duration(item.optLong("RunTimeTicks")),rating=DetailPresentation.contentRating(item),categories=DetailPresentation.categories(item);
+        String year=item.optString("ProductionYear"),duration=DetailPresentation.duration(item.optLong("RunTimeTicks")),rating=DetailPresentation.contentRating(item);
         detailYear.setText(year+"    ");detailYear.setVisibility(year.isEmpty()?View.GONE:View.VISIBLE);detailDuration.setText(duration+"    ");detailDuration.setVisibility(duration.isEmpty()?View.GONE:View.VISIBLE);
-        detailRating.setText(rating);detailRating.setVisibility(rating.isEmpty()?View.GONE:View.VISIBLE);detailCategories.setVisibility(View.GONE);renderFacets();
+        detailRating.setText(rating);detailRating.setVisibility(rating.isEmpty()?View.GONE:View.VISIBLE);renderFacets();updateMetadataRows();
         boolean hasOverview=!item.optString("Overview").trim().isEmpty();detailOverview.setText(hasOverview?item.optString("Overview"):"暂无简介");
         detailOverview.setFocusable(false);detailOverview.setClickable(hasOverview);detailOverview.post(this::updateOverviewMore);
         directorButtons.removeAllViews();JSONArray people=item.optJSONArray("People");
@@ -286,10 +285,14 @@ public final class DetailActivity extends TvActivity {
             }
         }
     }
+    private void updateMetadataRows(){
+        factsScroll.setVisibility(detailYear.getVisibility()==View.VISIBLE||detailDuration.getVisibility()==View.VISIBLE||detailRating.getVisibility()==View.VISIBLE||seriesButton.getVisibility()==View.VISIBLE||studioButtons.getChildCount()>0?View.VISIBLE:View.GONE);
+        facetScroll.setVisibility(facetButtons.getChildCount()>0?View.VISIBLE:View.GONE);
+    }
     private void renderCollections(){
         if(!"Movie".equals(item.optString("Type")))return;
         async(()->api.get(api.userPath()+"/Items/"+EtknApi.encode(item.optString("Id"))+"/Collections?Limit=60"),result->{
-            itemCollections.clear();itemCollections.addAll(EtknApi.rows(result));if(itemCollections.isEmpty()&&seriesButton.hasFocus())focusPlay();seriesButton.setVisibility(itemCollections.isEmpty()?View.GONE:View.VISIBLE);
+            itemCollections.clear();itemCollections.addAll(EtknApi.rows(result));if(itemCollections.isEmpty()&&seriesButton.hasFocus())focusPlay();seriesButton.setVisibility(itemCollections.isEmpty()?View.GONE:View.VISIBLE);updateMetadataRows();
         });
     }
     private void openItemCollection(){
@@ -530,16 +533,14 @@ public final class DetailActivity extends TvActivity {
     }
     private void chooseVersion(){
         JSONArray choices=sources;String[] labels=new String[choices.length()];for(int i=0;i<labels.length;i++)labels[i]=PlaybackSelection.sourceLabel(choices.optJSONObject(i),i);
-        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("版本").setSingleChoiceItems(labels,sourceIndex,(choice,index)->{int selected=PlaybackSelection.sourceIndex(sources,choices.optJSONObject(index).optString("Id"));if(selected>=0){sourceIndex=selected;audio=subtitle=PlaybackSelection.AUTO;updateChoices();}else Toast.makeText(this,"版本已变化，请重新选择",Toast.LENGTH_SHORT).show();choice.dismiss();}).setNegativeButton("取消",null).show();
-        dialog.getWindow().setBackgroundDrawable(shape(OVERLAY,0));dialog.getWindow().setDimAmount(0.15f);
+        PlayerChoiceDialog.create(this,"版本",labels,sourceIndex,(choice,index)->{int selected=PlaybackSelection.sourceIndex(sources,choices.optJSONObject(index).optString("Id"));if(selected>=0){sourceIndex=selected;audio=subtitle=PlaybackSelection.AUTO;updateChoices();}else Toast.makeText(this,"版本已变化，请重新选择",Toast.LENGTH_SHORT).show();choice.dismiss();}).show();
     }
     private void chooseStream(boolean subtitles){
         List<JSONObject> streams=PlaybackSelection.streams(selectedSource(),subtitles);List<String> labels=new ArrayList<>();List<Integer> indices=new ArrayList<>();labels.add(subtitles?DetailPresentation.subtitleLabel(selectedSource(),PlaybackSelection.AUTO):(PlaybackSelection.seasonKey(playable).isEmpty()?"自动选择 · ":"自动选择（解除本季锁定） · ")+PlaybackSelection.selectionLabel(selectedSource(),PlaybackSelection.AUTO,false,true));indices.add(PlaybackSelection.AUTO);
         if(subtitles){labels.add("关闭字幕");indices.add(-1);}
         for(int i=0;i<streams.size();i++){JSONObject stream=streams.get(i);labels.add((subtitles?"":"第 "+(i+1)+" 音轨 · ")+PlaybackSelection.streamLabel(stream,!subtitles));indices.add(stream.optInt("Index"));}
         int current=indices.indexOf(subtitles?subtitle:audio);
-        AlertDialog dialog=new AlertDialog.Builder(this).setTitle(subtitles?"字幕":"音轨").setSingleChoiceItems(labels.toArray(new String[0]),current,(choice,index)->{if(subtitles)subtitle=indices.get(index);else{audio=indices.get(index);new TvPreferences(this,api).saveSeasonAudio(PlaybackSelection.seasonKey(playable),PlaybackSelection.audioOrdinal(selectedSource(),audio));}updateChoices();choice.dismiss();}).setNegativeButton("取消",null).create();
-        dialog.show();dialog.getWindow().setBackgroundDrawable(shape(OVERLAY,0));dialog.getWindow().setDimAmount(0.15f);
+        PlayerChoiceDialog.create(this,subtitles?"字幕":"音轨",labels.toArray(new String[0]),current,(choice,index)->{if(subtitles)subtitle=indices.get(index);else{audio=indices.get(index);new TvPreferences(this,api).saveSeasonAudio(PlaybackSelection.seasonKey(playable),PlaybackSelection.audioOrdinal(selectedSource(),audio));}updateChoices();choice.dismiss();}).show();
     }
     private void loadEpisodes(){loadEpisodes(false);}
     private void loadEpisodes(boolean preserve){

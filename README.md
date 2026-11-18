@@ -44,6 +44,11 @@ Revised 用 GitHub 官方托管 Linux runner 构建，不在本机 Mac 构建。
 
 Revised 的应用内更新检查和 APK 下载均通过 `gh-proxy.com` 访问 Fork 的 Release。镜像不可用时可稍后重试，不会自动改用 GitHub 直连。原版 Telegram 通知不在 Fork 运行。
 
+## 开发参考
+
+- [ETKN Mobile 接口参考](docs/etkn-mobile-api.md)：从现有 TV 客户端整理的接口、鉴权和移植注意事项。
+- [Revised 外观真机验收清单](docs/revised-tv-style-qa.md)：遥控器焦点、列表对齐、主题和毛玻璃。
+
 ## 验证范围
 
 首版经过后端定向回归、生产回滚验证、Android 单元测试、Lint 和签名构建。未接入电视设备，遥控器焦点、电视硬解码兼容、字幕效果、系统通知及安装更新流程须实机验收。播放器按设备实际支持的格式播放，不承诺所有编码都能硬解。

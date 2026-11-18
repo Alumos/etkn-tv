@@ -2,19 +2,14 @@ package xyz.etkn.tv;
 
 import android.app.AlertDialog;
 import android.content.Intent;
-import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.Typeface;
 import android.graphics.Color;
-import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.SpannableStringBuilder;
-import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.view.Gravity;
 import android.view.View;
@@ -42,12 +37,12 @@ public final class SettingsActivity extends TvActivity {
     private static final String[] SUBTITLE_KEYS={"effect","chs","cht","chs_eng","cht_eng","chs_jpn","cht_jpn","chs_kor","cht_kor","original","eng","jpn","kor"};
     private static final String[] SUBTITLE_LABELS={"特效字幕","简体中文","繁体中文","简英双语","繁英双语","简日双语","繁日双语","简韩双语","繁韩双语","原语言","英文","日文","韩文"};
     @Override public void onCreate(Bundle state){
-        super.onCreate(state);screen("设置","ETKN TV  "+BuildConfig.VERSION_NAME);nav("返回",this::finish);
+        super.onCreate(state);screen("设置","");nav("返回",this::finish);
         if(!api.token.isEmpty()){
             LinearLayout account=section("账号");
-            LinearLayout identity=row();identity.setPadding(dp(2),dp(4),dp(2),dp(6));
+            LinearLayout identity=row();identity.setGravity(Gravity.CENTER_VERTICAL);identity.setPadding(dp(2),dp(4),dp(2),dp(6));
             ImageView avatar=new ImageView(this);avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);Images.rounded(avatar,dp(36));identity.addView(avatar,new LinearLayout.LayoutParams(dp(72),dp(72)));loadAvatar(avatar);
-            LinearLayout who=column();who.setPadding(dp(18),dp(8),0,0);
+            LinearLayout who=column();who.setPadding(dp(16),0,0,0);
             TextView name=text(api.session.name(),21,TEXT);name.setTypeface(null,Typeface.BOLD);who.addView(name);
             TextView server=text(api.server,13,MUTED);who.addView(server);
             identity.addView(who,new LinearLayout.LayoutParams(0,-2,1));account.addView(identity);
@@ -85,7 +80,6 @@ public final class SettingsActivity extends TvActivity {
         if ("L055FCN".equals(Build.MODEL)) app.addView(note("本电视还需启用“ETKN TV 开机启动”辅助服务以接收开机事件；该服务不监听窗口，Home 键仍返回原厂桌面。"));
         Button update=settingRow(TEXT);update.setText(rowText("检查更新","当前版本 "+BuildConfig.VERSION_NAME));update.setOnClickListener(view->checkUpdate());app.addView(update);
         Button licenses=settingRow(TEXT);licenses.setText(rowText("开源许可","GPL-3.0 及第三方组件"));licenses.setOnClickListener(view->showLicenses());app.addView(licenses);
-        app.addView(note("更新通过 GitHub Releases 获取；安装需要系统确认。"));
         if(!api.token.isEmpty()){
             LinearLayout danger=section(null);
             Button logout=settingRow(Color.rgb(235,124,139));logout.setText("退出当前账号");logout.setOnClickListener(view->new AlertDialog.Builder(this).setTitle("退出当前账号？").setPositiveButton("退出",(dialog,index)->{IngestNotifications.logout(this);Images.clear();IO.execute(()->{try{api.post("/api/tv/Sessions/Logout",new org.json.JSONObject());}catch(Exception ignored){}});api.session.clear();startActivity(new Intent(this,SetupActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));finish();}).setNegativeButton("取消",null).show());
@@ -97,7 +91,7 @@ public final class SettingsActivity extends TvActivity {
         LinearLayout panel=column();panel.setBackground(shape(PANEL,0));shadow(panel,8);panel.setPadding(dp(20),dp(14),dp(20),dp(10));
         LinearLayout.LayoutParams layout=new LinearLayout.LayoutParams(-1,-2);layout.setMargins(0,dp(10),0,0);content.addView(panel,layout);
         if(title!=null){
-            LinearLayout head=row();head.setPadding(dp(2),dp(4),dp(2),dp(8));
+            LinearLayout head=row();head.setGravity(Gravity.CENTER_VERTICAL);head.setPadding(dp(2),dp(4),dp(2),dp(8));
             View bar=new View(this);bar.setBackground(shape(ACCENT,0));head.addView(bar,new LinearLayout.LayoutParams(dp(3),dp(14)));
             TextView label=text(title,13,ACCENT);label.setTypeface(null,Typeface.BOLD);label.setPadding(dp(9),0,0,0);head.addView(label,new LinearLayout.LayoutParams(-2,-2));
             panel.addView(head);
@@ -106,10 +100,10 @@ public final class SettingsActivity extends TvActivity {
     }
     /** 全宽设置行：左侧主标题 + 弱化摘要，右侧箭头，遥控器整行聚焦。 */
     private Button settingRow(int textColor){
-        Button view=new Button(this);view.setStateListAnimator(null);shadow(view,3);view.setAllCaps(false);view.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+        Button view=new Button(this);view.setStateListAnimator(null);view.setBackgroundTintList(null);shadow(view,3);view.setAllCaps(false);view.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
         themeText(view,textColor);view.setTextSize(16);view.setBackground(focusBackground());view.setMinHeight(dp(52));
         view.setSingleLine(true);view.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        view.setPadding(dp(18),dp(6),dp(16),dp(6));view.setCompoundDrawablesRelativeWithIntrinsicBounds(null,null,chevron(),null);view.setCompoundDrawablePadding(dp(10));
+        view.setPaddingRelative(dp(16),dp(6),dp(16),dp(6));view.setCompoundDrawablesRelativeWithIntrinsicBounds(null,null,chevron(),null);view.setCompoundDrawablePadding(dp(10));
         LinearLayout.LayoutParams layout=new LinearLayout.LayoutParams(-1,dp(52));layout.setMargins(0,0,0,dp(10));view.setLayoutParams(layout);
         return view;
     }
@@ -121,13 +115,13 @@ public final class SettingsActivity extends TvActivity {
     }
     /** 整行可聚焦的开关行：左标题副文本、右 Switch，确认键切换。 */
     private LinearLayout switchRow(String title,String summary,boolean checked,java.util.function.Consumer<Boolean> onChange){
-        final Switch toggle=new Switch(this);toggle.setChecked(checked);
+        final Switch toggle=new Switch(this);toggle.setShowText(false);toggle.setSwitchMinWidth(dp(40));toggle.setChecked(checked);
         toggle.setOnCheckedChangeListener((button,on)->onChange.accept(on));
-        LinearLayout line=row();line.setFocusable(true);line.setClickable(true);line.setBackground(focusBackground());line.setPadding(dp(18),dp(12),dp(20),dp(12));
+        LinearLayout line=row();line.setGravity(Gravity.CENTER_VERTICAL);line.setFocusable(true);line.setClickable(true);line.setBackground(focusBackground());shadow(line,3);line.setPaddingRelative(dp(16),dp(10),dp(16),dp(10));line.setMinimumHeight(dp(52));
         LinearLayout.LayoutParams layout=new LinearLayout.LayoutParams(-1,-2);layout.setMargins(0,0,0,dp(10));line.setLayoutParams(layout);
-        LinearLayout label=column();
+        LinearLayout label=column();label.setPaddingRelative(0,0,dp(12),0);
         TextView head=text(title,16,TEXT);head.setPadding(0,0,0,0);label.addView(head);
-        TextView detail=text(summary,12,MUTED);detail.setPadding(0,0,0,dp(10));label.addView(detail);
+        TextView detail=text(summary,12,MUTED);detail.setPadding(0,dp(3),0,0);label.addView(detail);
         line.addView(label,new LinearLayout.LayoutParams(0,-2,1));
         LinearLayout.LayoutParams toggleLayout=new LinearLayout.LayoutParams(-2,-2);toggleLayout.gravity=Gravity.CENTER_VERTICAL;
         toggle.setFocusable(false);toggle.setClickable(false);line.addView(toggle,toggleLayout);
@@ -184,10 +178,22 @@ public final class SettingsActivity extends TvActivity {
             saved->{if(TvAppearance.sameSession(api,user)){reloadAppearance();if(!saved)syncAppearance();status.setText(saved?"已锁定当前账号全部共享偏好":"已恢复当前账号偏好同步");}});
     }
     private Drawable chevron(){
-        android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(dp(12),dp(18),android.graphics.Bitmap.Config.ARGB_8888);
-        Canvas canvas=new Canvas(bitmap);Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(2));paint.setStrokeCap(Paint.Cap.ROUND);paint.setColor(MUTED);
-        Path path=new Path();path.moveTo(dp(4),dp(4));path.lineTo(dp(9),dp(9));path.lineTo(dp(4),dp(14));canvas.drawPath(path,paint);
-        return new BitmapDrawable(getResources(),bitmap);
+        return new Drawable(){
+            final android.graphics.Paint paint=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            final android.graphics.Path path=new android.graphics.Path();
+            @Override public void draw(android.graphics.Canvas canvas){
+                float x=getBounds().exactCenterX(),y=getBounds().exactCenterY();
+                int direction=getLayoutDirection()==View.LAYOUT_DIRECTION_RTL?-1:1;
+                paint.setColor(resolveColor(MUTED));paint.setStyle(android.graphics.Paint.Style.STROKE);
+                paint.setStrokeWidth(dp(2));paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);paint.setStrokeJoin(android.graphics.Paint.Join.ROUND);
+                path.reset();path.moveTo(x-direction*dp(2),y-dp(4));path.lineTo(x+direction*dp(2),y);path.lineTo(x-direction*dp(2),y+dp(4));canvas.drawPath(path,paint);
+            }
+            @Override public int getIntrinsicWidth(){return dp(18);}
+            @Override public int getIntrinsicHeight(){return dp(18);}
+            @Override public void setAlpha(int alpha){}
+            @Override public void setColorFilter(android.graphics.ColorFilter filter){}
+            @Override public int getOpacity(){return android.graphics.PixelFormat.TRANSLUCENT;}
+        };
     }
     private void showSkipMode(){skipButton.setText(rowText("片头片尾",TvPreferences.SKIP_LABELS[new TvPreferences(this,api).skipMode()]));}
     private void showLicenses(){

@@ -35,7 +35,7 @@ public final class MusicActivity extends TvActivity {
         for(int i=0;i<TABS.length;i++){final int at=i;Button choice=button(LABELS[i],()->{tab=TABS[at];key="";tracksOnly=false;load();});choice.setBackground(transparentFocusBackground());musicMenu.addView(choice);}
         status=text("",13,MUTED);status.setPadding(dp(8),dp(4),dp(8),dp(4));root.addView(status);content=column();content.setPadding(dp(8),dp(8),dp(8),dp(16));root.addView(content);
         nav=row();nav.setGravity(Gravity.CENTER_VERTICAL);nav.setBaselineAligned(false);nav.setPadding(dp(12),dp(8),dp(12),dp(8));
-        mainMenu=new HorizontalScrollView(this);mainMenu.setHorizontalScrollBarEnabled(false);mainMenu.setBackground(capsuleSurface(TvAppearance.surface(appearanceDark())));mainMenu.addView(nav,new FrameLayout.LayoutParams(-2,-1));mainMenu.setVisibility(View.GONE);
+        mainMenu=new HorizontalScrollView(this);mainMenu.setHorizontalScrollBarEnabled(false);mainMenu.setClipChildren(false);mainMenu.setClipToPadding(false);mainMenu.setBackground(capsuleSurface(TvAppearance.surface(appearanceDark())));mainMenu.addView(nav,new FrameLayout.LayoutParams(-2,-1));mainMenu.setVisibility(View.GONE);
         FrameLayout.LayoutParams menuBounds=new FrameLayout.LayoutParams(-2,dp(68),Gravity.TOP|Gravity.CENTER_HORIZONTAL);menuBounds.topMargin=dp(12);stage.addView(mainMenu,menuBounds);
         mainMenuItem("首页",()->openHome("home"));mainMenuItem("媒体库",()->openHome("library"));mainMenuItem("音乐",()->{tab="recommended";key="";tracksOnly=false;load();});mainMenuItem("收藏",()->openHome("favorites"));mainMenuItem("搜索",()->openHome("search"));mainMenuItem("设置",()->open(SettingsActivity.class));
         screenScroll.setOnScrollChangeListener((view,x,y,oldX,oldY)->nextPageIfNeeded());
