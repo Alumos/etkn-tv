@@ -25,6 +25,11 @@
 - `update.json` 内记录 Fork 的规范 GitHub APK URL。应用从 `https://gh-proxy.com/https://github.com/Alumos/etkn-tv/releases/latest/download/update.json` 检查更新，并给合法的 Fork APK 地址加同一镜像前缀。只访问指定镜像，不跟随跨主机重定向，不自动回退直连。包大小、SHA-256、包名、递增版本和已安装 APK 的签名仍须全部匹配。镜像有短时缓存或不可用时，请稍后重试。
 - GitHub [公开仓库标准 Runner 计费说明](https://docs.github.com/en/billing/concepts/product-billing/github-actions)：公开仓库使用标准 GitHub 托管 runner 免费。[定时事件说明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)：工作流每 6 小时检查一次，只跑默认分支，调度可能延迟。公开 Fork 的定时工作流默认禁用；连续 60 天无仓库活动后也可能自动停用。可到 Actions 重新启用或手动触发。
 
+## 合入 Fork 的改动
+
+- 把 Fork 的改动提交到 `main`。涉及 Android 源码或构建配置时，独立的 **ETKN TV Revised Android checks** 会在 GitHub 托管 runner 执行 release 单测和 Lint，也可以手动触发。它不使用发行密钥、不打包 APK、不发 Release。
+- 未引入新上游版本时，推送仅更新源码；下一次正式上游 Release 合并成功后才会随签名 APK 推送到电视。若上游重构 UI，即使 Git 合并没有冲突，也要参照 [真机验收清单](revised-tv-style-qa.md) 复核。
+
 ## 发布后验证
 
 - 在 Actions 确认单测、Lint、构建、签名与 Release 校验均成功，确认 GitHub 的 latest 指向正确的 `revised-v…` 标签。
