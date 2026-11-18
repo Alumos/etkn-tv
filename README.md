@@ -1,6 +1,6 @@
-# ETKN TV
+# ETKN TV Revised
 
-ETKN 原生 Android TV 客户端。Android 7（API 24）及以上，遥控器操作，内置 AndroidX Media3 播放器。
+基于 [ETKN TV](https://github.com/hbq0405/etkn-tv) 的独立 Android TV 版本。支持 Android 7（API 24）及以上，保留 ETKN 服务端兼容。Fork 的应用名为 ETKN TV Revised，包名为 `xyz.etkn.tv.revised`，可以和原版共存。首次安装需手动下载安装 APK；原版的本机账号和设置不会自动迁移。
 
 ## 首版功能
 
@@ -25,7 +25,7 @@ ETKN 原生 Android TV 客户端。Android 7（API 24）及以上，遥控器操
 - 分集矩阵铺满可用宽度，从外部进入时默认定位续播集，没有续播则第一集；从具体单集打开时定位该集。已观看集使用绿色背景和勾，续播集使用按比例填充的绿色进度。
 - 默认音轨/字幕优先级与网页个人中心同步，个人配置覆盖全局，清空后跟随全局。片头片尾可选显示跳过按钮、自动跳过或关闭，只使用媒体版本的明确标记。
 
-下载：[最新发行版本](https://github.com/hbq0405/etkn-tv/releases/latest)
+下载：[Revised 最新发行版本](https://github.com/Alumos/etkn-tv/releases/latest)（须先有 Fork 正式发布）。
 
 v0.1.0 / v0.1.1 若在应用内更新时提示“更新包签名不符”，请从 Releases 下载 v0.1.2 或更高版本 APK，手动覆盖安装一次，保留原 App 和数据。旧版更新器存在证书读取兼容问题。
 
@@ -40,24 +40,9 @@ v0.1.15 的首页实时缓存更新需要服务端 `/api/tv/Users/{user_id}/Home
 
 ## 构建与发行
 
-GitHub Release 正式发布后，工作流 `TV Release Telegram Notification` 向配置的 Telegram 群发送 TV 版本、更新说明和下载链接。仓库 Secrets 为 `TELEGRAM_TOKEN` 和 `TELEGRAM_TO`；草稿不发送，通知不置顶。成功日志保留消息 ID，成功后不要重复运行以免重复通知。
+Revised 用 GitHub 官方托管 Linux runner 构建，不在本机 Mac 构建。启用后，Fork 按正式 Release 同步上游源码，保留 Fork 改动，用自己的固定签名发版。详情见 [Revised 同步与发布指南](docs/revised-release.md)。
 
-JDK 17 以上、Android SDK 36（Build Tools 35）、Gradle Wrapper 8.13。
-
-```powershell
-$env:JAVA_HOME='你的 JDK 目录'
-$env:ANDROID_HOME='你的 SDK 目录'
-.\gradlew.bat :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
-```
-
-发行使用固定签名，在私有目录创建 `signing.properties`，字段为 `storeFile`、`storePassword`、`keyAlias`、`keyPassword`，将绝对路径放入 `ETKN_TV_SIGNING_PROPERTIES` 环境变量。私钥和属性文件不入 Git，须另行安全备份；后续更新必须沿用同一签名，递增 versionCode。
-
-```powershell
-$env:ETKN_TV_SIGNING_PROPERTIES='本机私有目录\signing.properties'
-.\scripts\Build-Release.ps1 -OutputDirectory '发行输出目录'
-```
-
-检查生成的 APK、update.json、SHA256SUMS.txt 和说明，之后通过 `gh release create v<版本> <发行文件> --repo hbq0405/etkn-tv --notes-file <说明文件>` 发布。源码与发行包均在同一公开仓库。
+Revised 的应用内更新检查和 APK 下载均通过 `gh-proxy.com` 访问 Fork 的 Release。镜像不可用时可稍后重试，不会自动改用 GitHub 直连。原版 Telegram 通知不在 Fork 运行。
 
 ## 验证范围
 

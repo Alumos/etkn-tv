@@ -37,7 +37,7 @@ public class UpdaterSignatureTest {
         });
         Updater.Release release=new Updater.Release(new JSONObject().put("packageName",BuildConfig.APPLICATION_ID)
             .put("versionCode",3).put("versionName","0.1.2").put("size",200000).put("sha256","a".repeat(64))
-            .put("apkUrl","https://github.com/hbq0405/etkn-tv/releases/download/v0.1.2/etkn-tv-0.1.2.apk"));
+            .put("apkUrl","https://github.com/Alumos/etkn-tv/releases/download/revised-v0.1.2/etkn-tv-revised-0.1.2.apk"));
         Updater.validatePackage(manager,BuildConfig.APPLICATION_ID,apk,release,sdk);
     }
     @Test public void sameSignerAcceptedOnAndroid7()throws Exception {

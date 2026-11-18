@@ -1,5 +1,7 @@
 # 构建与发布操作规范
 
+> 本文保留上游历史记录、构建与实机验收经验。ETKN TV Revised 的实际发布流程及配置见 [Revised 同步与发布指南](revised-release.md)，不在用户本机 Mac 运行 Gradle、构建或签名。
+
 - Windows 的 rg 目录搜索使用 `rg 关键词 目录 -g '*.java'`，不把通配符拼进路径。路径错误先核对已返回命中及真实目录，不反复盲试。
 - `local.properties` 的 Windows 盘符冒号需要转义，如 `sdk.dir=C\:/Android/sdk`。本地属性不入仓库。
 - 当前 Google SDK 工具使用 `android --sdk <目录> sdk list --all` 确认实际包名，安装使用 `platforms/android-36` 等斜杠名称。安装返回码须结合目录与安装清单核验，不能仅以 exit 0 判断包已安装。

@@ -5,13 +5,14 @@ android {
     namespace 'xyz.etkn.tv'
     compileSdk 36
     defaultConfig {
-        applicationId 'xyz.etkn.tv'
+        applicationId 'xyz.etkn.tv.revised'
         minSdk 24
         targetSdk 35
         versionCode 132
         versionName '0.1.131'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
-        buildConfigField 'String', 'UPDATE_MANIFEST_URL', '"https://github.com/hbq0405/etkn-tv/releases/latest/download/update.json"'
+        buildConfigField 'String', 'UPDATE_REPOSITORY', '"Alumos/etkn-tv"'
+        buildConfigField 'String', 'UPDATE_MIRROR_BASE', '"https://gh-proxy.com/"'
     }
     buildFeatures { buildConfig true }
     sourceSets.main.java.srcDir '../third_party/nextlib_compat/java'

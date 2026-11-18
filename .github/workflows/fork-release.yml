@@ -1,0 +1,211 @@
+name: ETKN TV Revised release
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: 'Exact stable upstream tag (vMAJOR.MINOR.PATCH); blank selects latest'
+        type: string
+        required: false
+
+permissions: {}
+
+concurrency:
+  group: etkn-tv-revised-release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: github.repository == 'Alumos/etkn-tv' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      needed: ${{ steps.plan.outputs.needed }}
+      plan: ${{ steps.plan.outputs.plan }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Run offline release policy regression tests
+        run: python3 -B -m unittest discover -s scripts/fork-release -v
+      - name: Select official tag and prepare a local merge only
+        id: plan
+        env:
+          UPSTREAM_TAG: ${{ inputs.upstream_tag }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: python3 scripts/fork-release/release.py plan "$RUNNER_TEMP/candidate" --tag "$UPSTREAM_TAG" --workflow-sha "$WORKFLOW_SHA"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.needed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    outputs:
+      artifact: ${{ steps.unsigned.outputs.artifact-id }}
+      sha256: ${{ steps.build.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Reproduce the exact planned source
+        env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EXPECTED_PLAN: ${{ needs.plan.outputs.plan }}
+          UPSTREAM_TAG: ${{ fromJSON(needs.plan.outputs.plan).upstream_tag }}
+        run: python3 scripts/fork-release/release.py build "$RUNNER_TEMP/candidate" --tag "$UPSTREAM_TAG" --workflow-sha "$WORKFLOW_SHA"
+      - name: Unit tests, Lint and unsigned intermediate build (no signing or publishing credentials)
+        id: build
+        shell: bash
+        working-directory: ${{ runner.temp }}/candidate
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          unset ETKN_TV_SIGNING_PROPERTIES
+          ./gradlew --no-daemon --console=plain :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
+          install -m 0644 app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/unsigned.apk"
+          digest=$(sha256sum "$RUNNER_TEMP/unsigned.apk")
+          printf 'sha256=%s\n' "${digest%% *}" >> "$GITHUB_OUTPUT"
+      - name: Hand off the unsigned intermediate for one day only
+        id: unsigned
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: revised-unsigned-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/unsigned.apk
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  sign:
+    needs: [plan, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: {}
+    outputs:
+      artifact: ${{ steps.signed.outputs.artifact-id }}
+      sha256: ${{ steps.verify.outputs.sha256 }}
+      certificate: ${{ steps.verify.outputs.certificate }}
+    steps:
+      # Fresh runner: do not check out the candidate, run Gradle, or restore a cache in this job.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact }}
+          path: ${{ runner.temp }}/unsigned
+      - name: Verify intermediate hash, identity, version and Android minimum
+        env:
+          UNSIGNED_SHA256: ${{ needs.build.outputs.sha256 }}
+          VERSION_NAME: ${{ fromJSON(needs.plan.outputs.plan).version }}
+          VERSION_CODE: ${{ fromJSON(needs.plan.outputs.plan).code }}
+        shell: bash
+        run: |
+          apk="$RUNNER_TEMP/unsigned/unsigned.apk"
+          [[ "$UNSIGNED_SHA256" =~ ^[a-f0-9]{64}$ && -f "$apk" && ! -L "$apk" ]]
+          printf '%s  %s\n' "$UNSIGNED_SHA256" "$apk" | sha256sum --check --strict
+          size=$(stat --format=%s "$apk")
+          (( size >= 100000 && size <= 200 * 1024 * 1024 ))
+          badging=$("$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk")
+          package_line=${badging%%$'\n'*}
+          [[ "$package_line" == "package: name='xyz.etkn.tv.revised' versionCode='$VERSION_CODE' versionName='$VERSION_NAME' "* ]]
+          printf '%s\n' "$badging" | grep -Ex "(minSdkVersion|sdkVersion):'24'" >/dev/null
+          # Existing signer material and duplicate names are not valid inputs to this job.
+          python3 - "$apk" <<'PY'
+          import sys
+          from zipfile import ZipFile
+          with ZipFile(sys.argv[1]) as apk:
+              names = apk.namelist()
+              assert len(names) == len(set(names)), 'Duplicate ZIP entries'
+              assert not any(name.upper().startswith('META-INF/') and name.upper().endswith(('.RSA', '.DSA', '.EC', '.SF'))
+                             for name in names), 'Already contains JAR signatures'
+              with open(sys.argv[1], 'rb') as f:
+                  f.seek(apk.start_dir - 16)
+                  assert f.read(16) != b'APK Sig Block 42', 'Already contains APK signatures'
+          PY
+      - name: Sign with the fixed Fork key (no repository write token)
+        env:
+          FORK_KEYSTORE_BASE64: ${{ secrets.FORK_KEYSTORE_BASE64 }}
+          FORK_KEYSTORE_PASSWORD: ${{ secrets.FORK_KEYSTORE_PASSWORD }}
+          FORK_KEY_ALIAS: ${{ secrets.FORK_KEY_ALIAS }}
+          FORK_KEY_PASSWORD: ${{ secrets.FORK_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          : "${FORK_KEYSTORE_BASE64:?Missing FORK_KEYSTORE_BASE64}"
+          : "${FORK_KEYSTORE_PASSWORD:?Missing FORK_KEYSTORE_PASSWORD}"
+          : "${FORK_KEY_ALIAS:?Missing FORK_KEY_ALIAS}"
+          : "${FORK_KEY_PASSWORD:?Missing FORK_KEY_PASSWORD}"
+          umask 077
+          keydir=$(mktemp -d "$RUNNER_TEMP/fork-key.XXXXXXXX")
+          trap 'rm -f -- "$keydir/release.keystore"; rmdir -- "$keydir"' EXIT
+          printf '%s' "$FORK_KEYSTORE_BASE64" | base64 --decode > "$keydir/release.keystore"
+          unset FORK_KEYSTORE_BASE64
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks "$keydir/release.keystore" --ks-key-alias "$FORK_KEY_ALIAS" \
+            --ks-pass env:FORK_KEYSTORE_PASSWORD --key-pass env:FORK_KEY_PASSWORD \
+            --v4-signing-enabled false --out "$RUNNER_TEMP/signed.apk" "$RUNNER_TEMP/unsigned/unsigned.apk"
+      - name: Verify signature and pinned SHA-256 certificate
+        id: verify
+        env:
+          FORK_SIGNER_SHA256: ${{ secrets.FORK_SIGNER_SHA256 }}
+          PREVIOUS_SIGNER_BASE64: ${{ fromJSON(needs.plan.outputs.plan).previous_signer_b64 }}
+        shell: bash
+        run: |
+          expected=${FORK_SIGNER_SHA256//:/}
+          expected=${expected,,}
+          [[ "$expected" =~ ^[a-f0-9]{64}$ ]]
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          apk="$RUNNER_TEMP/signed.apk"
+          result=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --min-sdk-version 24 --print-certs "$apk")
+          mapfile -t certs < <(printf '%s\n' "$result" | awk '/^Signer #[0-9]+ certificate SHA-256 digest: / {print tolower($NF)}')
+          [[ "${#certs[@]}" == 1 && "${certs[0]}" == "$expected" ]]
+          # Encode the public certificate digest without copying a masked secret into a job output.
+          certificate=$(python3 -c 'import base64, sys; print(base64.b64encode(bytes.fromhex(sys.argv[1])).decode())' "${certs[0]}")
+          [[ -z "$PREVIOUS_SIGNER_BASE64" || "$certificate" == "$PREVIOUS_SIGNER_BASE64" ]]
+          printf 'certificate=%s\n' "$certificate" >> "$GITHUB_OUTPUT"
+          digest=$(sha256sum "$apk")
+          printf 'sha256=%s\n' "${digest%% *}" >> "$GITHUB_OUTPUT"
+      - name: Hand off only the verified signed APK
+        id: signed
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: revised-signed-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/signed.apk
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish:
+    needs: [plan, sign]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      # Only reviewed workflow code and tools run in this job; it never checks out the merge candidate for execution.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.sign.outputs.artifact }}
+          path: ${{ runner.temp }}/signed
+      - name: Atomically advance main and tag, verify draft assets, and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          UPSTREAM_TAG: ${{ fromJSON(needs.plan.outputs.plan).upstream_tag }}
+          EXPECTED_PLAN: ${{ needs.plan.outputs.plan }}
+          SIGNED_SHA256: ${{ needs.sign.outputs.sha256 }}
+          SIGNED_CERT_BASE64: ${{ needs.sign.outputs.certificate }}
+          SIGNED_APK: ${{ runner.temp }}/signed/signed.apk
+          RELEASE_ASSETS: ${{ runner.temp }}/release-assets
+        run: python3 scripts/fork-release/release.py publish "$RUNNER_TEMP/candidate" --tag "$UPSTREAM_TAG" --workflow-sha "$WORKFLOW_SHA"

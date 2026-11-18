@@ -10,33 +10,49 @@ import java.security.MessageDigest;
 import java.util.*;
 
 final class Updater {
+    private static final String GITHUB_BASE = "https://github.com/" + BuildConfig.UPDATE_REPOSITORY;
+    private static final URI MIRROR = URI.create(BuildConfig.UPDATE_MIRROR_BASE);
+    private static final java.util.regex.Pattern APK_PATH = java.util.regex.Pattern.compile(
+        java.util.regex.Pattern.quote("/" + BuildConfig.UPDATE_REPOSITORY + "/releases/download/")
+            + "[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*\\.apk");
+
     static final class Release {
         final long code,size;final String version,notes,url,sha256;
         Release(JSONObject json)throws Exception {
-            code=json.getLong("versionCode");size=json.getLong("size");version=json.getString("versionName");notes=json.optString("releaseNotes");url=json.getString("apkUrl");sha256=json.getString("sha256").toLowerCase(Locale.ROOT);
-            URI uri=new URI(url);
-            if(!json.optString("packageName").equals(BuildConfig.APPLICATION_ID)||code<1||size<100000||size>200*1024*1024||!sha256.matches("[0-9a-f]{64}")||!"https".equals(uri.getScheme())||!"github.com".equals(uri.getHost())||!uri.getPath().startsWith("/hbq0405/etkn-tv/releases/download/")||!uri.getPath().endsWith(".apk")||uri.getUserInfo()!=null||uri.getPort()!=-1||uri.getRawQuery()!=null||uri.getRawFragment()!=null)throw new Exception("更新信息无效");
+            code=json.getLong("versionCode");size=json.getLong("size");version=json.getString("versionName");notes=json.optString("releaseNotes");sha256=json.getString("sha256").toLowerCase(Locale.ROOT);
+            URI uri=new URI(json.getString("apkUrl"));
+            if(!json.optString("packageName").equals(BuildConfig.APPLICATION_ID)||code<1||size<100000||size>200*1024*1024||!sha256.matches("[0-9a-f]{64}")||!"https".equals(uri.getScheme())||!"github.com".equals(uri.getRawAuthority())||uri.getRawPath()==null||!APK_PATH.matcher(uri.getRawPath()).matches()||uri.getRawQuery()!=null||uri.getRawFragment()!=null)throw new Exception("更新信息无效");
+            url=BuildConfig.UPDATE_MIRROR_BASE+uri;
         }
     }
-    static HttpURLConnection connect(String address)throws Exception {
+    static String manifestUrl() {
+        return BuildConfig.UPDATE_MIRROR_BASE + GITHUB_BASE + "/releases/latest/download/update.json";
+    }
+    static boolean isMirrorUrl(URL url) {
+        return "https".equals(url.getProtocol()) && MIRROR.getRawAuthority().equalsIgnoreCase(url.getAuthority())
+            && url.getRef()==null;
+    }
+    private static HttpURLConnection connect(String address,boolean manifest)throws Exception {
         URL url=new URL(address);
         for(int i=0;i<6;i++){
-            if(!url.getProtocol().equals("https"))throw new Exception("更新地址必须使用 HTTPS");
+            if(!isMirrorUrl(url))throw new Exception("更新镜像跳转到非允许地址，请稍后重试");
             HttpURLConnection conn=(HttpURLConnection)url.openConnection();conn.setConnectTimeout(15000);conn.setReadTimeout(30000);conn.setInstanceFollowRedirects(false);conn.setRequestProperty("User-Agent",EtknApi.USER_AGENT);
-            int code=conn.getResponseCode();
-            if(code>=300&&code<400){String location=conn.getHeaderField("Location");conn.disconnect();if(location==null)throw new Exception("下载地址无效");url=new URL(url,location);continue;}
-            if(code==404){conn.disconnect();throw new Exception("发行仓库尚未提供正式版本");}
-            if(code!=200){conn.disconnect();throw new Exception("更新服务暂不可用（HTTP "+code+"）");}return conn;
-        }throw new Exception("更新服务跳转过多");
+            if(manifest)conn.setRequestProperty("Cache-Control","no-cache");
+            int code;
+            try{code=conn.getResponseCode();}catch(Exception error){conn.disconnect();throw error;}
+            if(code>=300&&code<400){String location=conn.getHeaderField("Location");conn.disconnect();if(location==null)throw new Exception("更新镜像的跳转地址无效，请稍后重试");url=new URL(url,location);continue;}
+            if(code==404){conn.disconnect();throw new Exception("更新镜像暂未找到正式版本，请稍后重试");}
+            if(code!=200){conn.disconnect();throw new Exception("更新镜像暂不可用（HTTP "+code+"），请稍后重试");}return conn;
+        }throw new Exception("更新镜像跳转过多，请稍后重试");
     }
     static Release check()throws Exception {
-        HttpURLConnection conn=connect(BuildConfig.UPDATE_MANIFEST_URL);
+        HttpURLConnection conn=connect(manifestUrl(),true);
         try{return new Release(new JSONObject(EtknApi.readText(conn.getInputStream())));}finally{conn.disconnect();}
     }
     static synchronized File download(Context context,Release release,java.util.function.Consumer<Integer> progress)throws Exception {
         File directory=context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);if(directory==null)throw new Exception("下载目录不可用");
         File partial=new File(directory,"etkn-tv-update.part"),apk=new File(directory,"etkn-tv-update.apk");
-        HttpURLConnection conn=connect(release.url);MessageDigest hash=MessageDigest.getInstance("SHA-256");
+        HttpURLConnection conn=connect(release.url,false);MessageDigest hash=MessageDigest.getInstance("SHA-256");
         try{
             try(InputStream input=conn.getInputStream();OutputStream output=new FileOutputStream(partial)){
                 byte[] buffer=new byte[32768];long size=0;int length,last=-1;

@@ -1,6 +1,8 @@
 param([Parameter(Mandatory=$true)][string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
+$config=Get-Content -LiteralPath (Join-Path $repo 'app/build.gradle') -Raw
+if($config -notmatch "applicationId\s+'xyz[.]etkn[.]tv'"){throw 'This is the upstream release script. Build ETKN TV Revised on GitHub Actions instead.'}
 if(-not $env:ETKN_TV_SIGNING_PROPERTIES -or -not (Test-Path -LiteralPath $env:ETKN_TV_SIGNING_PROPERTIES)){throw 'Set ETKN_TV_SIGNING_PROPERTIES to your existing private signing properties file.'}
 if(-not $env:ANDROID_HOME){throw 'Set ANDROID_HOME to your Android SDK.'}
 Push-Location $repo
@@ -11,7 +13,6 @@ try {
     $apk=Join-Path $repo 'app/build/outputs/apk/release/app-release.apk'
     & (Join-Path $tools.FullName 'apksigner.bat') verify --verbose --print-certs $apk
     if($LASTEXITCODE -ne 0){throw 'APK signature verification failed.'}
-    $config=Get-Content -LiteralPath (Join-Path $repo 'app/build.gradle') -Raw
     $version=[regex]::Match($config,"versionName '([^']+)'").Groups[1].Value
     $code=[int][regex]::Match($config,'versionCode (\d+)').Groups[1].Value
     if(-not $version -or $code -lt 1){throw 'Missing release version.'}

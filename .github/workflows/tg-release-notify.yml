@@ -8,6 +8,7 @@ permissions: {}
 
 jobs:
   notify:
+    if: github.repository == 'hbq0405/etkn-tv'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

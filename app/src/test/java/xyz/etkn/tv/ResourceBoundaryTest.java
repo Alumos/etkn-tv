@@ -24,10 +24,28 @@ public class ResourceBoundaryTest {
         assertEquals("selected",body.getString("sha1"));assertEquals("g",body.getString("logical_group_id"));assertEquals("episode",body.getJSONObject("best_asset_map").getJSONObject("1").getString("sha1"));
     }
     @Test public void updateManifestOnlyAcceptsConfiguredReleaseRepository()throws Exception {
-        JSONObject manifest=new JSONObject().put("packageName",BuildConfig.APPLICATION_ID).put("versionCode",2).put("versionName","0.2").put("size",200000).put("sha256","a".repeat(64)).put("apkUrl","https://github.com/hbq0405/etkn-tv/releases/download/v0.2/etkn.apk");
-        assertEquals(2,new Updater.Release(manifest).code);
-        for(String url:new String[]{"https://github.com/other/repo/releases/download/v0.2/etkn.apk","http://github.com/hbq0405/etkn-tv/releases/download/v0.2/etkn.apk","https://github.com/hbq0405/etkn-tv/releases/download/v0.2/etkn.apk?redirect=bad"}){
-            manifest.put("apkUrl",url);try{new Updater.Release(manifest);fail("untrusted update accepted");}catch(Exception expected){}
+        String apk="https://github.com/Alumos/etkn-tv/releases/download/revised-v0.2/etkn-tv-revised-0.2.apk";
+        JSONObject manifest=new JSONObject().put("packageName","xyz.etkn.tv.revised").put("versionCode",2).put("versionName","0.2").put("size",200000).put("sha256","a".repeat(64)).put("apkUrl",apk);
+        Updater.Release release=new Updater.Release(manifest);
+        assertEquals(2,release.code);
+        assertEquals("https://gh-proxy.com/"+apk,release.url);
+        for(String url:new String[]{apk.replace("Alumos","hbq0405"),apk.replace("https:","http:"),apk+"?redirect=bad",apk+"#fragment",
+                apk.replace("github.com","github.com:443"),apk.replace("github.com","github.com:"),apk.replace("github.com","user"+"@"+"github.com"),apk.replace("github.com","github.com.evil.example"),
+                "https://gh-proxy.com/"+apk,apk.replace("revised-v0.2/","%2e%2e/"),apk.replace("revised-v0.2/","revised-v0.2/nested/"),apk.replace(".apk",".zip")}) {
+            manifest.put("apkUrl",url);assertThrows(url,Exception.class,()->new Updater.Release(manifest));
+        }
+        manifest.put("apkUrl",apk).put("packageName","xyz.etkn.tv");
+        assertThrows(Exception.class,()->new Updater.Release(manifest));
+    }
+    @Test public void updateRequestsAndRedirectsStayOnMirror()throws Exception {
+        String address="https://gh-proxy.com/https://github.com/Alumos/etkn-tv/releases/latest/download/update.json";
+        assertEquals(address,Updater.manifestUrl());
+        assertTrue(Updater.isMirrorUrl(new java.net.URL(address)));
+        assertTrue(Updater.isMirrorUrl(new java.net.URL(address+"?cache=1")));
+        for(String url:new String[]{address.replace("https://gh-proxy.com/",""),address.replace("https://gh-proxy.com/","http://gh-proxy.com/"),
+                address.replace("gh-proxy.com","gh-proxy.com.evil.example"),address.replace("gh-proxy.com","user"+"@"+"gh-proxy.com"),
+                address.replace("gh-proxy.com","gh-proxy.com:443"),address+"#fragment","https://release-assets.githubusercontent.com/example"}) {
+            assertFalse(url,Updater.isMirrorUrl(new java.net.URL(url)));
         }
     }
 }
