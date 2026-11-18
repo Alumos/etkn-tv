@@ -86,6 +86,28 @@ class MergeTests(unittest.TestCase):
                 self.git.verify(base, changed_native)
 
 
+class MetadataTests(unittest.TestCase):
+    def test_planning_uses_job_token_for_api_not_public_assets(self):
+        git = Mock()
+        git.prepare.return_value = ("a" * 40, "b" * 40, "c" * 40)
+        git.remote_tag.return_value = None
+        git.value.return_value = "same-automation"
+        git.merge.return_value = "d" * 40
+        official = dict(tag_name="v0.1.131", draft=False, prerelease=False, published_at="2026-01-01")
+        manifest = dict(packageName="xyz.etkn.tv", versionName="0.1.131", versionCode=132)
+        with (
+            patch.object(release, "Git", return_value=git),
+            patch.object(release, "api", side_effect=[official, {"object": {"sha": "b" * 40}}, None, None]) as api,
+            patch.object(release, "read_url", return_value=json.dumps(manifest).encode()) as read,
+        ):
+            plan = release.plan_release(git, "v0.1.131", "a" * 40, "job-token")
+        self.assertTrue(plan["needed"])
+        self.assertEqual(api.call_count, 4)
+        for call in api.call_args_list:
+            self.assertEqual(call.kwargs["token"], "job-token")
+        read.assert_called_once_with(release.asset_url(release.UPSTREAM, "v0.1.131", "update.json"))
+
+
 class PublishTests(unittest.TestCase):
     def setUp(self):
         tmp = TemporaryDirectory()

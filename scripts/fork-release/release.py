@@ -188,10 +188,10 @@ class Git:
         require(self.remote_tag(tag) == source, "Remote release tag does not point to the tested commit.")
 
 
-def plan_release(git, requested, approved_workflow):
+def plan_release(git, requested, approved_workflow, token):
     require(not requested or re.fullmatch("v" + VERSION, requested), "Expected upstream_tag vMAJOR.MINOR.PATCH.")
     endpoint = f"tags/{requested}" if requested else "latest"
-    release = api(UPSTREAM, f"releases/{endpoint}")
+    release = api(UPSTREAM, f"releases/{endpoint}", token=token)
     tag = release.get("tag_name")
     require(isinstance(tag, str) and re.fullmatch("v" + VERSION, tag) and (not requested or tag == requested) and
             release.get("draft") is False and release.get("prerelease") is False and release.get("published_at"),
@@ -199,9 +199,9 @@ def plan_release(git, requested, approved_workflow):
     version = tag[1:]
     fork_tag = f"revised-{tag}"
     base, tag_object, upstream = git.prepare(tag)
-    require(api(UPSTREAM, f"git/ref/tags/{tag}")["object"]["sha"] == tag_object,
+    require(api(UPSTREAM, f"git/ref/tags/{tag}", token=token)["object"]["sha"] == tag_object,
             "Upstream tag changed while being fetched.")
-    already = api(FORK, f"releases/tags/{fork_tag}", missing=True)
+    already = api(FORK, f"releases/tags/{fork_tag}", missing=True, token=token)
     existing = git.remote_tag(fork_tag)
     if existing:
         dest = f"refs/fork-release/{fork_tag}"
@@ -221,7 +221,7 @@ def plan_release(git, requested, approved_workflow):
                 "Release automation changed on main. Start a fresh workflow run.")
     code = version_manifest(UPSTREAM, tag, "xyz.etkn.tv", version)["versionCode"]
     previous_signer = ""
-    latest = api(FORK, "releases/latest", missing=True)
+    latest = api(FORK, "releases/latest", missing=True, token=token)
     if latest:
         latest_tag = latest.get("tag_name", "")
         require(re.fullmatch("revised-v" + VERSION, latest_tag), "Unexpected latest Fork release tag.")
@@ -239,10 +239,10 @@ def plan_release(git, requested, approved_workflow):
                 previous_signer_b64=base64.b64encode(bytes.fromhex(previous_signer)).decode("ascii"))
 
 
-def public_verify(plan, paths):
-    # The anonymous REST/download endpoints can briefly lag the successful publish response.
+def public_verify(plan, paths, token):
+    # REST metadata and the separately verified anonymous downloads can briefly lag publication.
     for attempt in range(6):
-        latest = api(FORK, "releases/latest", missing=True)
+        latest = api(FORK, "releases/latest", missing=True, token=token)
         if latest and latest.get("tag_name") == plan["fork_tag"] and latest.get("draft") is False:
             verify_assets(latest, paths)
             live = read_url(f"https://github.com/{FORK}/releases/latest/download/update.json", missing=True)
@@ -294,7 +294,7 @@ def publish(git, plan, signed, output, apk_hash, signer, token, already_publishe
     paths[sums.name] = sums
     if already_published:
         require(git.remote_tag(tag) == plan["source"], "Published tag does not point to the tested commit.")
-        public_verify(plan, paths)
+        public_verify(plan, paths, token)
         return
     marker = f"<!-- fork-release-v1 tag={tag} source={plan['source']} upstream={plan['upstream']} -->"
     notes = (f"{marker}\n\n{summary}\n\n"
@@ -337,7 +337,7 @@ def publish(git, plan, signed, output, apk_hash, signer, token, already_publishe
             git.remote_tag(tag) == plan["source"], "Draft metadata or remote tag does not match the release plan.")
     verify_assets(ready, paths)
     api(FORK, release_path, token=token, method="PATCH", payload=dict(draft=False, make_latest="true"))
-    public_verify(plan, paths)
+    public_verify(plan, paths, token)
 
 
 def main():
@@ -348,7 +348,8 @@ def main():
     parser.add_argument("--workflow-sha", required=True)
     args = parser.parse_args()
     git = Git(args.directory)
-    plan = plan_release(git, args.tag, args.workflow_sha)
+    token = os.environ["GH_TOKEN"]
+    plan = plan_release(git, args.tag, args.workflow_sha, token)
     if args.mode == "plan":
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
             output.write(f"needed={str(plan['needed']).lower()}\n")
@@ -367,7 +368,7 @@ def main():
         require(plan == expected or plan == resumed, "Fork or upstream changed; retry with a fresh run.")
     signer = base64.b64decode(os.environ["SIGNED_CERT_BASE64"], validate=True).hex()
     publish(git, expected if already_published else plan, Path(os.environ["SIGNED_APK"]),
-            Path(os.environ["RELEASE_ASSETS"]), os.environ["SIGNED_SHA256"], signer, os.environ["GH_TOKEN"],
+            Path(os.environ["RELEASE_ASSETS"]), os.environ["SIGNED_SHA256"], signer, token,
             already_published=already_published)
 
 

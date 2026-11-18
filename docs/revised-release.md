@@ -3,12 +3,12 @@
 ## 首次启用
 
 1. 审核改动后，把本工作流提交到 [Alumos/etkn-tv](https://github.com/Alumos/etkn-tv) 的默认分支 `main`。在 Fork 的 **Actions** 中启用工作流；如 Actions 提示 Fork 默认禁用，先在仓库设置中允许 Actions。只使用 GitHub 官方托管 Linux runner，不在用户的 Mac 上运行 Gradle 或编译 APK。
-2. 为 Revised 创建一套**独立且长期使用的 Android 正式签名**（JKS，可用可信的 JDK/keytool 环境生成）。离线备份原始 keystore 和密码；不要提交、粘贴到聊天或在 Actions 日志打印它们。不能用上游、Android Debug 或每次运行临时生成的密钥。
+2. 为 Revised 创建一套**独立且长期使用的 Android 正式签名**（JKS 或 PKCS#12，可用可信的 JDK/keytool 或 OpenSSL 环境生成）。离线备份原始 keystore 和密码；不要提交、粘贴到聊天或在 Actions 日志打印它们。不能用上游、Android Debug 或每次运行临时生成的密钥。
 3. 在 Fork 的 **Settings → Secrets and variables → Actions** 添加下列 repository secrets。证书摘要是固定身份校验值，不是密码；应来自离线正式证书，不从待发布 APK 临时倒推。
 
    | Secret | 内容 |
    | --- | --- |
-   | `FORK_KEYSTORE_BASE64` | 正式 JKS 文件字节的单行 Base64；不可写入工作树。 |
+   | `FORK_KEYSTORE_BASE64` | 正式密钥库文件字节的单行 Base64；不可写入工作树。 |
    | `FORK_KEYSTORE_PASSWORD` | Keystore 密码。 |
    | `FORK_KEY_ALIAS` | 用于签名的 key alias。 |
    | `FORK_KEY_PASSWORD` | 对应私钥密码。 |

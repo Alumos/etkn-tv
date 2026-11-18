@@ -36,6 +36,7 @@ jobs:
       - name: Select official tag and prepare a local merge only
         id: plan
         env:
+          GH_TOKEN: ${{ github.token }}
           UPSTREAM_TAG: ${{ inputs.upstream_tag }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: python3 scripts/fork-release/release.py plan "$RUNNER_TEMP/candidate" --tag "$UPSTREAM_TAG" --workflow-sha "$WORKFLOW_SHA"
@@ -57,6 +58,7 @@ jobs:
           persist-credentials: false
       - name: Reproduce the exact planned source
         env:
+          GH_TOKEN: ${{ github.token }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
           EXPECTED_PLAN: ${{ needs.plan.outputs.plan }}
           UPSTREAM_TAG: ${{ fromJSON(needs.plan.outputs.plan).upstream_tag }}
