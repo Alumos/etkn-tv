@@ -9,6 +9,10 @@ on:
         description: 'Exact stable upstream tag (vMAJOR.MINOR.PATCH); blank selects latest'
         type: string
         required: false
+      fork_revision:
+        description: 'Optional Fork-only revision 1–99; requires the exact currently published upstream tag'
+        type: string
+        required: false
 
 permissions: {}
 
@@ -38,8 +42,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           UPSTREAM_TAG: ${{ inputs.upstream_tag }}
+          FORK_REVISION: ${{ inputs.fork_revision }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
-        run: python3 scripts/fork-release/release.py plan "$RUNNER_TEMP/candidate" --tag "$UPSTREAM_TAG" --workflow-sha "$WORKFLOW_SHA"
+        run: python3 scripts/fork-release/release.py plan "$RUNNER_TEMP/candidate" --tag "$UPSTREAM_TAG" --fork-revision "${FORK_REVISION:-0}" --workflow-sha "$WORKFLOW_SHA"
 
   build:
     needs: plan
@@ -62,16 +67,20 @@ jobs:
           WORKFLOW_SHA: ${{ github.workflow_sha }}
           EXPECTED_PLAN: ${{ needs.plan.outputs.plan }}
           UPSTREAM_TAG: ${{ fromJSON(needs.plan.outputs.plan).upstream_tag }}
-        run: python3 scripts/fork-release/release.py build "$RUNNER_TEMP/candidate" --tag "$UPSTREAM_TAG" --workflow-sha "$WORKFLOW_SHA"
+          FORK_REVISION: ${{ fromJSON(needs.plan.outputs.plan).fork_revision }}
+        run: python3 scripts/fork-release/release.py build "$RUNNER_TEMP/candidate" --tag "$UPSTREAM_TAG" --fork-revision "${FORK_REVISION:-0}" --workflow-sha "$WORKFLOW_SHA"
       - name: Unit tests, Lint and unsigned intermediate build (no signing or publishing credentials)
         id: build
+        env:
+          VERSION_NAME: ${{ fromJSON(needs.plan.outputs.plan).version }}
+          VERSION_CODE: ${{ fromJSON(needs.plan.outputs.plan).code }}
         shell: bash
         working-directory: ${{ runner.temp }}/candidate
         run: |
           export JAVA_HOME="$JAVA_HOME_17_X64"
           export PATH="$JAVA_HOME/bin:$PATH"
           unset ETKN_TV_SIGNING_PROPERTIES
-          ./gradlew --no-daemon --console=plain :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
+          ./gradlew --no-daemon --console=plain "-PforkReleaseVersionName=$VERSION_NAME" "-PforkReleaseVersionCode=$VERSION_CODE" :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
           install -m 0644 app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/unsigned.apk"
           digest=$(sha256sum "$RUNNER_TEMP/unsigned.apk")
           printf 'sha256=%s\n' "${digest%% *}" >> "$GITHUB_OUTPUT"
@@ -207,9 +216,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
           UPSTREAM_TAG: ${{ fromJSON(needs.plan.outputs.plan).upstream_tag }}
+          FORK_REVISION: ${{ fromJSON(needs.plan.outputs.plan).fork_revision }}
           EXPECTED_PLAN: ${{ needs.plan.outputs.plan }}
           SIGNED_SHA256: ${{ needs.sign.outputs.sha256 }}
           SIGNED_CERT_BASE64: ${{ needs.sign.outputs.certificate }}
           SIGNED_APK: ${{ runner.temp }}/signed/signed.apk
           RELEASE_ASSETS: ${{ runner.temp }}/release-assets
-        run: python3 scripts/fork-release/release.py publish "$RUNNER_TEMP/candidate" --tag "$UPSTREAM_TAG" --workflow-sha "$WORKFLOW_SHA"
+        run: python3 scripts/fork-release/release.py publish "$RUNNER_TEMP/candidate" --tag "$UPSTREAM_TAG" --fork-revision "${FORK_REVISION:-0}" --workflow-sha "$WORKFLOW_SHA"

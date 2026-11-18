@@ -1,6 +1,7 @@
 """Offline tests: Git fixtures in temporary dirs, no APK tools or GitHub calls."""
 
 import base64
+import hashlib
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -85,27 +86,170 @@ class MergeTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "Native inputs changed"):
                 self.git.verify(base, changed_native)
 
+    def test_upstream_literal_gradle_baseline_remains_in_git_across_merge(self):
+        gradle_131 = ("android {\n    defaultConfig {\n        versionCode 132\n"
+                      "        versionName '0.1.131'\n    }\n}\n")
+        gradle_132 = gradle_131.replace("versionCode 132", "versionCode 133").replace("'0.1.131'", "'0.1.132'")
+        upstream_131 = self.commit("app/build.gradle", gradle_131)
+        fork = self.commit("fork.txt", "revised\n")
+        self.detach(upstream_131)
+        upstream_132 = self.commit("app/build.gradle", gradle_132)
+        source = self.git.merge(fork, upstream_132)
+        script = self.git.value("show", f"{source}:app/build.gradle")
+        release.verify_upstream_gradle(script, "0.1.132", 133)
+        self.assertEqual(script, gradle_132.rstrip())
+        with self.assertRaisesRegex(SystemExit, "Merged Gradle base version"):
+            release.verify_upstream_gradle(script, "0.1.132-r1", 134)
+        self.assertEqual(self.git.value("show", f"{fork}:app/build.gradle"), gradle_131.rstrip())
+        self.assertEqual(self.git.value("rev-parse", "HEAD"), upstream_132)
+        self.assertEqual(self.git.value("status", "--porcelain"), "")
+
 
 class MetadataTests(unittest.TestCase):
-    def test_planning_uses_job_token_for_api_not_public_assets(self):
+    signer = "34" * 32
+
+    def plan(self, *, upstream_tag="v0.1.131", upstream_code=132, fork_revision=None,
+             previous_version=None, previous_code=None, previous_upstream_code=None,
+             previous_upstream_tag=None, git_code=None, scheduled=False, published=False):
         git = Mock()
-        git.prepare.return_value = ("a" * 40, "b" * 40, "c" * 40)
-        git.remote_tag.return_value = None
-        git.value.return_value = "same-automation"
-        git.merge.return_value = "d" * 40
-        official = dict(tag_name="v0.1.131", draft=False, prerelease=False, published_at="2026-01-01")
-        manifest = dict(packageName="xyz.etkn.tv", versionName="0.1.131", versionCode=132)
+        base, tag_object, upstream, source = (character * 40 for character in "abcd")
+        git.prepare.return_value = (base, tag_object, upstream)
+        git.remote_tag.return_value = source if published else None
+        git.ancestor.return_value = True
+        git.merge.return_value = source
+        upstream_version = upstream_tag[1:]
+        gradle_code = upstream_code if git_code is None else git_code
+        gradle = f"android {{\n    defaultConfig {{\n        versionCode {gradle_code}\n        versionName '{upstream_version}'\n    }}\n}}"
+
+        def git_value(operation, *args):
+            if operation == "rev-parse":
+                return source if args[0].startswith("refs/fork-release/") else "same-automation"
+            self.assertEqual(operation, "show")
+            self.assertEqual(args, (f"{source}:app/build.gradle",))
+            return gradle
+
+        git.value.side_effect = git_value
+        official = dict(tag_name=upstream_tag, draft=False, prerelease=False, published_at="2026-01-01")
+        official_url = release.asset_url(release.UPSTREAM, upstream_tag, "update.json")
+        manifests = {official_url: dict(packageName="xyz.etkn.tv", versionName=upstream_version,
+                                        versionCode=upstream_code)}
+        latest = None
+        if previous_version is not None:
+            latest_tag = "revised-v" + previous_version
+            latest = dict(tag_name=latest_tag, draft=False, prerelease=False, published_at="2026-01-01")
+            previous = dict(packageName=release.PACKAGE, versionName=previous_version, versionCode=previous_code,
+                            signerSha256=self.signer)
+            if previous_upstream_code is not None:
+                previous["upstreamVersionCode"] = previous_upstream_code
+            if previous_upstream_tag is not None:
+                previous["upstreamTag"] = previous_upstream_tag
+            manifests[release.asset_url(release.FORK, latest_tag, "update.json")] = previous
+
+        def read_asset(url):
+            return json.dumps(manifests[url]).encode()
+
+        already = dict(tag_name="revised-" + upstream_tag, draft=False, prerelease=False) if published else None
+        responses = [official, {"object": {"sha": tag_object}}, already, latest]
         with (
             patch.object(release, "Git", return_value=git),
-            patch.object(release, "api", side_effect=[official, {"object": {"sha": "b" * 40}}, None, None]) as api,
-            patch.object(release, "read_url", return_value=json.dumps(manifest).encode()) as read,
+            patch.object(release, "api", side_effect=responses) as api,
+            patch.object(release, "read_url", side_effect=read_asset) as read,
+            patch("builtins.print"),
         ):
-            plan = release.plan_release(git, "v0.1.131", "a" * 40, "job-token")
+            args = (git, "" if scheduled else upstream_tag, base, "job-token")
+            kwargs = {} if fork_revision is None else {"fork_revision": fork_revision}
+            plan = release.plan_release(*args, **kwargs)
+        return plan, api, read
+
+    def test_planning_uses_job_token_for_api_not_public_assets(self):
+        plan, api, read = self.plan(scheduled=True)
         self.assertTrue(plan["needed"])
+        self.assertEqual((plan["fork_tag"], plan["version"], plan["code"], plan["upstream_code"], plan["fork_revision"]),
+                         ("revised-v0.1.131", "0.1.131", 132, 132, 0))
         self.assertEqual(api.call_count, 4)
+        self.assertEqual(api.call_args_list[0].args, (release.UPSTREAM, "releases/latest"))
         for call in api.call_args_list:
             self.assertEqual(call.kwargs["token"], "job-token")
         read.assert_called_once_with(release.asset_url(release.UPSTREAM, "v0.1.131", "update.json"))
+
+    def test_schedule_leaves_published_canonical_tag_untouched_after_fork_revision(self):
+        plan, api, read = self.plan(scheduled=True, published=True, previous_version="0.1.131-r1",
+                                    previous_code=133, previous_upstream_code=132, previous_upstream_tag="v0.1.131")
+        self.assertEqual(plan, {"needed": False})
+        self.assertEqual(api.call_args.args, (release.FORK, "releases/tags/revised-v0.1.131"))
+        self.assertEqual(api.call_count, 3)
+        read.assert_not_called()
+
+    def test_first_fork_revision_migrates_legacy_manifest(self):
+        plan, _, _ = self.plan(fork_revision=1, previous_version="0.1.131", previous_code=132)
+        self.assertTrue(plan["needed"])
+        self.assertEqual(plan["upstream_tag"], "v0.1.131")
+        self.assertEqual(plan["fork_tag"], "revised-v0.1.131-r1")
+        self.assertEqual(plan["version"], "0.1.131-r1")
+        self.assertEqual(plan["upstream_code"], 132)
+        self.assertEqual(plan["code"], 133)
+        self.assertEqual(plan["fork_revision"], 1)
+        self.assertEqual(base64.b64decode(plan["previous_signer_b64"]).hex(), self.signer)
+
+    def test_next_fork_revision_compares_upstream_code_not_published_code(self):
+        plan, _, _ = self.plan(fork_revision=2, previous_version="0.1.131-r1", previous_code=133,
+                               previous_upstream_code=132, previous_upstream_tag="v0.1.131")
+        self.assertEqual((plan["fork_tag"], plan["version"], plan["code"], plan["upstream_code"], plan["fork_revision"]),
+                         ("revised-v0.1.131-r2", "0.1.131-r2", 134, 132, 2))
+
+    def test_next_upstream_returns_to_canonical_tag_with_monotonic_android_code(self):
+        for upstream_code, expected_code in ((133, 135), (140, 140)):
+            with self.subTest(upstream_code=upstream_code):
+                plan, _, _ = self.plan(upstream_tag="v0.1.132", upstream_code=upstream_code, scheduled=True,
+                                       previous_version="0.1.131-r2", previous_code=134,
+                                       previous_upstream_code=132, previous_upstream_tag="v0.1.131")
+                self.assertEqual((plan["fork_tag"], plan["version"], plan["code"], plan["upstream_code"], plan["fork_revision"]),
+                                 ("revised-v0.1.132", "0.1.132", expected_code, upstream_code, 0))
+
+    def test_newer_upstream_code_must_increase_even_if_android_code_could_increase(self):
+        for upstream_code in (131, 132):
+            with self.subTest(upstream_code=upstream_code), self.assertRaisesRegex(SystemExit, "would not increase"):
+                self.plan(upstream_tag="v0.1.132", upstream_code=upstream_code, previous_version="0.1.131-r1",
+                          previous_code=133, previous_upstream_code=132, previous_upstream_tag="v0.1.131")
+
+    def test_same_upstream_version_requires_matching_code_and_sequential_revision(self):
+        previous = dict(previous_version="0.1.131-r2", previous_code=134,
+                        previous_upstream_code=132, previous_upstream_tag="v0.1.131")
+        for fork_revision, upstream_code in ((3, 133), (1, 132), (4, 132)):
+            with self.subTest(fork_revision=fork_revision, upstream_code=upstream_code), \
+                    self.assertRaisesRegex(SystemExit, "must increment the revision"):
+                self.plan(fork_revision=fork_revision, upstream_code=upstream_code, **previous)
+
+    def test_fork_revision_requires_a_published_base(self):
+        with self.assertRaisesRegex(SystemExit, "Publish the upstream base release"):
+            self.plan(fork_revision=1)
+
+    def test_previous_fork_revision_requires_consistent_upstream_metadata(self):
+        for code, tag, message in (
+            (None, None, "must record its upstream"),
+            (132, None, "Invalid latest Fork upstream metadata"),
+            (132, "v0.1.130", "Invalid latest Fork upstream metadata"),
+            (134, "v0.1.131", "Invalid latest Fork upstream metadata"),
+        ):
+            with self.subTest(code=code, tag=tag), self.assertRaisesRegex(SystemExit, message):
+                self.plan(fork_revision=2, previous_version="0.1.131-r1", previous_code=133,
+                          previous_upstream_code=code, previous_upstream_tag=tag)
+
+    def test_monotonic_android_code_cannot_overflow_play_store_limit(self):
+        limit = 2_100_000_000
+        with self.assertRaisesRegex(SystemExit, "Android versionCode exceeds its limit"):
+            self.plan(fork_revision=1, upstream_code=limit, previous_version="0.1.131", previous_code=limit)
+
+    def test_upstream_manifest_cannot_disagree_with_merged_gradle_code(self):
+        with self.assertRaisesRegex(SystemExit, "Merged Gradle base version"):
+            self.plan(upstream_code=133, git_code=132)
+
+    def test_fork_revision_requires_integer_in_range_and_explicit_upstream_tag(self):
+        for revision in (-1, 100, True, "1"):
+            with self.subTest(revision=revision), self.assertRaisesRegex(SystemExit, "require an exact upstream_tag"):
+                self.plan(fork_revision=revision)
+        with self.assertRaisesRegex(SystemExit, "require an exact upstream_tag"):
+            self.plan(scheduled=True, fork_revision=1)
 
 
 class PublishTests(unittest.TestCase):
@@ -119,7 +263,8 @@ class PublishTests(unittest.TestCase):
         self.digest = release.file_digest(self.signed)
         self.signer = "12" * 32
         self.plan = dict(fork_tag="revised-v0.1.131", upstream_tag="v0.1.131", version="0.1.131", code=132,
-                         source="a" * 40, upstream="b" * 40, previous_signer_b64="")
+                         upstream_code=132, fork_revision=0, source="a" * 40, upstream="b" * 40,
+                         previous_signer_b64="")
         self.marker = (f"<!-- fork-release-v1 tag=revised-v0.1.131 source={self.plan['source']} "
                        f"upstream={self.plan['upstream']} -->")
         self.git = Mock()
@@ -196,7 +341,39 @@ class PublishTests(unittest.TestCase):
         manifest = json.loads((self.output / "update.json").read_bytes())
         self.assertEqual(manifest["packageName"], "xyz.etkn.tv.revised")
         self.assertEqual(manifest["signerSha256"], self.signer)
+        self.assertEqual(manifest["upstreamTag"], "v0.1.131")
+        self.assertEqual(manifest["upstreamVersionCode"], 132)
         self.assertEqual(manifest["apkUrl"], "https://github.com/Alumos/etkn-tv/releases/download/revised-v0.1.131/" + self.apk_name)
+
+    def test_new_fork_revision_publishes_independent_android_and_upstream_identity(self):
+        plan = dict(self.plan, fork_tag="revised-v0.1.131-r1", version="0.1.131-r1", code=133, fork_revision=1)
+        draft = dict(id=18, tag_name=plan["fork_tag"], draft=True, prerelease=False, assets=[])
+
+        def api(repo, endpoint, *, token, method="GET", payload=None):
+            if endpoint.startswith("releases?"):
+                return []
+            if method == "POST":
+                self.assertEqual(endpoint, "releases")
+                self.assertEqual(payload["tag_name"], plan["fork_tag"])
+                self.assertTrue(payload["draft"])
+                draft.update(payload)
+            else:
+                self.assertEqual(endpoint, "releases/18")
+            return draft
+
+        def upload(url, *, method, data, token, content_type):
+            name = url.split("?name=")[1]
+            draft["assets"].append(dict(name=name, state="uploaded", size=len(data),
+                                        digest="sha256:" + hashlib.sha256(data).hexdigest()))
+
+        with patch.object(release, "download", self.fake_download), patch.object(release, "api", api), \
+                patch.object(release, "read_url", upload), patch.object(release, "public_verify"):
+            release.publish(self.git, plan, self.signed, self.output, self.digest, self.signer, "test-token")
+        manifest = json.loads((self.output / "update.json").read_bytes())
+        self.assertEqual(manifest["packageName"], "xyz.etkn.tv.revised")
+        self.assertEqual((manifest["versionName"], manifest["versionCode"]), ("0.1.131-r1", 133))
+        self.assertEqual((manifest["upstreamTag"], manifest["upstreamVersionCode"]), ("v0.1.131", 132))
+        self.assertEqual(manifest["apkUrl"], release.asset_url(release.FORK, "revised-v0.1.131-r1", "etkn-tv-revised-0.1.131-r1.apk"))
 
 
 if __name__ == "__main__":

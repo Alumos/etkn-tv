@@ -39,6 +39,18 @@ android {
     lint { abortOnError true }
 }
 
+// Override APK metadata on the trusted Fork release build without changing upstream's base numbers.
+def forkReleaseName = providers.gradleProperty('forkReleaseVersionName').orNull
+def forkReleaseCode = providers.gradleProperty('forkReleaseVersionCode').orNull
+if (forkReleaseName != null || forkReleaseCode != null) {
+    if (forkReleaseName == null || !(forkReleaseName ==~ /[0-9]+\.[0-9]+\.[0-9]+(-r[1-9][0-9]?)?/) ||
+            forkReleaseCode == null || !(forkReleaseCode ==~ /[1-9][0-9]{0,9}/) || forkReleaseCode.toLong() > 2100000000L) {
+        throw new GradleException('Invalid paired Fork release version properties')
+    }
+    android.defaultConfig.versionName = forkReleaseName
+    android.defaultConfig.versionCode = forkReleaseCode.toInteger()
+}
+
 dependencies {
     implementation 'androidx.core:core:1.16.0'
     implementation 'androidx.media3:media3-exoplayer:1.8.0'

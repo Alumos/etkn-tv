@@ -26,6 +26,7 @@ NATIVE_PATHS = ("app/src/main/jniLibs", "app/src/main/cpp", "third_party", ".git
 VERSION = r"(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})"
 DEPENDENCY_COMMIT = "630b797db5618200e765f7768142c03751663aa9"
 DEPENDENCY_PATHS = ("build.gradle", "settings.gradle", "gradle", "gradle.properties", "gradlew", "gradlew.bat")
+FORK_TAG = rf"revised-v(?P<version>{VERSION})(?:-r(?P<revision>[1-9][0-9]?))?"
 APK_MAX = 200 * 1024 * 1024
 
 
@@ -188,16 +189,60 @@ class Git:
         require(self.remote_tag(tag) == source, "Remote release tag does not point to the tested commit.")
 
 
-def plan_release(git, requested, approved_workflow, token):
+def release_identity(tag, upstream_code, revision, latest_tag=None, latest_manifest=None):
+    version = tag[1:]
+    require(type(revision) is int and 0 <= revision <= 99, "Expected Fork revision 0–99.")
+    previous_code = 0
+    if latest_tag is not None:
+        match = re.fullmatch(FORK_TAG, latest_tag)
+        require(match is not None, "Unexpected latest Fork release tag.")
+        previous_version = match["version"]
+        previous_revision = int(match["revision"] or 0)
+        previous_code = latest_manifest["versionCode"]
+        has_origin = "upstreamVersionCode" in latest_manifest or "upstreamTag" in latest_manifest
+        if has_origin:
+            previous_upstream_code = latest_manifest.get("upstreamVersionCode")
+            require(latest_manifest.get("upstreamTag") == f"v{previous_version}" and
+                    type(previous_upstream_code) is int and 0 < previous_upstream_code <= previous_code,
+                    "Invalid latest Fork upstream metadata.")
+        else:
+            require(previous_revision == 0, "A Fork revision must record its upstream version and code.")
+            previous_upstream_code = previous_code
+        if revision:
+            require(version == previous_version and upstream_code == previous_upstream_code and
+                    revision == previous_revision + 1,
+                    "A Fork revision must increment the revision of the currently published upstream base.")
+        else:
+            require(tuple(map(int, version.split("."))) > tuple(map(int, previous_version.split("."))) and
+                    upstream_code > previous_upstream_code,
+                    "Upstream release version or versionCode would not increase over the current upstream base.")
+    else:
+        require(revision == 0, "Publish the upstream base release before issuing a Fork revision.")
+    code = max(upstream_code, previous_code + 1)
+    require(code <= 2_100_000_000, "Fork Android versionCode exceeds its limit.")
+    return code
+
+
+def verify_upstream_gradle(script, version, code):
+    require(len(re.findall(r"(?m)^[ \t]*version(?:Code|Name)\b", script)) == 2 and
+            re.findall(r"(?m)^[ \t]*versionCode ([0-9]+)[ \t]*$", script) == [str(code)] and
+            re.findall(r"(?m)^[ \t]*versionName '([^']+)'[ \t]*$", script) == [version],
+            "Merged Gradle base version does not match the official upstream release.")
+
+
+def plan_release(git, requested, approved_workflow, token, fork_revision=0):
     require(not requested or re.fullmatch("v" + VERSION, requested), "Expected upstream_tag vMAJOR.MINOR.PATCH.")
+    require(type(fork_revision) is int and 0 <= fork_revision <= 99 and (not fork_revision or requested),
+            "Fork revisions require an exact upstream_tag and a revision of 1–99.")
     endpoint = f"tags/{requested}" if requested else "latest"
     release = api(UPSTREAM, f"releases/{endpoint}", token=token)
     tag = release.get("tag_name")
     require(isinstance(tag, str) and re.fullmatch("v" + VERSION, tag) and (not requested or tag == requested) and
             release.get("draft") is False and release.get("prerelease") is False and release.get("published_at"),
             "Upstream release is not an eligible stable release.")
-    version = tag[1:]
-    fork_tag = f"revised-{tag}"
+    base_version = tag[1:]
+    version = f"{base_version}-r{fork_revision}" if fork_revision else base_version
+    fork_tag = f"revised-v{version}"
     base, tag_object, upstream = git.prepare(tag)
     require(api(UPSTREAM, f"git/ref/tags/{tag}", token=token)["object"]["sha"] == tag_object,
             "Upstream tag changed while being fetched.")
@@ -219,23 +264,26 @@ def plan_release(git, requested, approved_workflow, token):
     for path in (".github/workflows/fork-release.yml", "scripts/fork-release"):
         require(trusted.value("rev-parse", f"{approved_workflow}:{path}") == git.value("rev-parse", f"{base}:{path}"),
                 "Release automation changed on main. Start a fresh workflow run.")
-    code = version_manifest(UPSTREAM, tag, "xyz.etkn.tv", version)["versionCode"]
+    upstream_code = version_manifest(UPSTREAM, tag, "xyz.etkn.tv", base_version)["versionCode"]
     previous_signer = ""
     latest = api(FORK, "releases/latest", missing=True, token=token)
+    latest_tag = None
+    latest_manifest = None
     if latest:
         latest_tag = latest.get("tag_name", "")
-        require(re.fullmatch("revised-v" + VERSION, latest_tag), "Unexpected latest Fork release tag.")
+        require(re.fullmatch(FORK_TAG, latest_tag), "Unexpected latest Fork release tag.")
         latest_version = latest_tag.removeprefix("revised-v")
         latest_manifest = version_manifest(FORK, latest_tag, PACKAGE, latest_version)
         previous_signer = latest_manifest.get("signerSha256", "")
         require(isinstance(previous_signer, str) and re.fullmatch(r"[a-f0-9]{64}", previous_signer),
                 "Latest Fork release has no valid signer fingerprint.")
-        require(code > latest_manifest["versionCode"] and tuple(map(int, version.split("."))) > tuple(map(int, latest_version.split("."))),
-                "Release version or versionCode would not increase over the current Fork release.")
+    code = release_identity(tag, upstream_code, fork_revision, latest_tag, latest_manifest)
     source = existing or git.merge(base, upstream)
     git.verify(base, source)
+    verify_upstream_gradle(git.value("show", f"{source}:app/build.gradle"), base_version, upstream_code)
     return dict(needed=True, upstream_tag=tag, upstream=upstream, tag_object=tag_object, base=base,
                 source=source, existing_tag=existing or "", version=version, code=code, fork_tag=fork_tag,
+                upstream_code=upstream_code, fork_revision=fork_revision,
                 previous_signer_b64=base64.b64encode(bytes.fromhex(previous_signer)).decode("ascii"))
 
 
@@ -285,9 +333,13 @@ def publish(git, plan, signed, output, apk_hash, signer, token, already_publishe
     paths = {apk_name: signed, "update.json": output / "update.json", NATIVE_NAME: output / NATIVE_NAME}
     download(NATIVE_URL, paths[NATIVE_NAME], NATIVE_SHA256, 128 * 1024 * 1024)
     summary = f"ETKN TV Revised {version} (upstream {plan['upstream_tag']})"
+    release_notes = summary
+    if tag == "revised-v0.1.131-r1":
+        release_notes += "\n\n新版 UI：优化设置和选择列表对齐、登录面板毛玻璃、播放控制栏和音乐队列。"
     manifest = dict(packageName=PACKAGE, versionName=version, versionCode=plan["code"],
+                    upstreamTag=plan["upstream_tag"], upstreamVersionCode=plan["upstream_code"],
                     size=signed.stat().st_size, apkUrl=asset_url(FORK, tag, apk_name), sha256=apk_hash,
-                    signerSha256=signer, releaseNotes=summary)
+                    signerSha256=signer, releaseNotes=release_notes)
     paths["update.json"].write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     sums = output / "SHA256SUMS.txt"
     sums.write_text("".join(f"{file_digest(path)}  {name}\n" for name, path in paths.items()), encoding="utf-8")
@@ -297,7 +349,7 @@ def publish(git, plan, signed, output, apk_hash, signer, token, already_publishe
         public_verify(plan, paths, token)
         return
     marker = f"<!-- fork-release-v1 tag={tag} source={plan['source']} upstream={plan['upstream']} -->"
-    notes = (f"{marker}\n\n{summary}\n\n"
+    notes = (f"{marker}\n\n{release_notes}\n\n"
              f"- [Upstream release](https://github.com/{UPSTREAM}/releases/tag/{plan['upstream_tag']})\n"
              f"- [Corresponding application source](https://github.com/{FORK}/tree/{plan['source']}) (GPL-3.0)\n"
              f"- The attached {NATIVE_NAME} contains the corresponding native sources, licenses and rebuild materials.\n")
@@ -345,11 +397,12 @@ def main():
     parser.add_argument("mode", choices=["plan", "build", "publish"])
     parser.add_argument("directory", type=Path)
     parser.add_argument("--tag", default="")
+    parser.add_argument("--fork-revision", type=int, default=0)
     parser.add_argument("--workflow-sha", required=True)
     args = parser.parse_args()
     git = Git(args.directory)
     token = os.environ["GH_TOKEN"]
-    plan = plan_release(git, args.tag, args.workflow_sha, token)
+    plan = plan_release(git, args.tag, args.workflow_sha, token, args.fork_revision)
     if args.mode == "plan":
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
             output.write(f"needed={str(plan['needed']).lower()}\n")

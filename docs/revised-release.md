@@ -28,7 +28,9 @@
 ## 合入 Fork 的改动
 
 - 把 Fork 的改动提交到 `main`。涉及 Android 源码或构建配置时，独立的 **ETKN TV Revised Android checks** 会在 GitHub 托管 runner 执行 release 单测和 Lint，也可以手动触发。它不使用发行密钥、不打包 APK、不发 Release。
-- 未引入新上游版本时，推送仅更新源码；下一次正式上游 Release 合并成功后才会随签名 APK 推送到电视。若上游重构 UI，即使 Git 合并没有冲突，也要参照 [真机验收清单](revised-tv-style-qa.md) 复核。
+- 未引入新上游版本时，通常先推源码，随下次上游正式发行一起发布；需要立即发 Fork 改动时，手动触发 **ETKN TV Revised release**，指定当前已发布的上游 `upstream_tag` 和下一个 `fork_revision`（从 `1` 开始）。例如 `v0.1.131` + `1` 生成 `revised-v0.1.131-r1`，不替换原版资产。
+- `update.json` 分别记录上游版本和 Fork 实际 APK `versionCode`；Fork 每次至少加 1。下一次自动跟进按上游基线判断是否更新，不会因为 Fork 修订已经占用某个数值而跳过新版。定时任务不自动发行 `-rN`。
+- 若上游重构 UI，即使 Git 合并没有冲突，也要参照 [真机验收清单](revised-tv-style-qa.md) 复核。
 
 ## 发布后验证
 
