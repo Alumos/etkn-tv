@@ -100,6 +100,7 @@ jobs:
         with:
           artifact-ids: ${{ needs.build.outputs.artifact }}
           path: ${{ runner.temp }}/unsigned
+          merge-multiple: true # ID-based downloads otherwise create an artifact-name subdirectory.
       - name: Verify intermediate hash, identity, version and Android minimum
         env:
           UNSIGNED_SHA256: ${{ needs.build.outputs.sha256 }}
@@ -108,7 +109,7 @@ jobs:
         shell: bash
         run: |
           apk="$RUNNER_TEMP/unsigned/unsigned.apk"
-          [[ "$UNSIGNED_SHA256" =~ ^[a-f0-9]{64}$ && -f "$apk" && ! -L "$apk" ]]
+          [[ "$UNSIGNED_SHA256" =~ ^[a-f0-9]{64}$ && -f "$apk" && ! -L "$apk" ]] || { echo "Missing regular unsigned APK or invalid SHA-256 output." >&2; exit 1; }
           printf '%s  %s\n' "$UNSIGNED_SHA256" "$apk" | sha256sum --check --strict
           size=$(stat --format=%s "$apk")
           (( size >= 100000 && size <= 200 * 1024 * 1024 ))
@@ -200,6 +201,7 @@ jobs:
         with:
           artifact-ids: ${{ needs.sign.outputs.artifact }}
           path: ${{ runner.temp }}/signed
+          merge-multiple: true # ID-based downloads otherwise create an artifact-name subdirectory.
       - name: Atomically advance main and tag, verify draft assets, and publish
         env:
           GH_TOKEN: ${{ github.token }}
