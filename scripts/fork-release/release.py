@@ -28,6 +28,13 @@ DEPENDENCY_COMMIT = "630b797db5618200e765f7768142c03751663aa9"
 DEPENDENCY_PATHS = ("build.gradle", "settings.gradle", "gradle", "gradle.properties", "gradlew", "gradlew.bat")
 FORK_TAG = rf"revised-v(?P<version>{VERSION})(?:-r(?P<revision>[1-9][0-9]?))?"
 APK_MAX = 200 * 1024 * 1024
+AUTOMATION_PATHS = (".github/workflows", "scripts/fork-release")
+# Reviewed exception: the release tree is clean, but importing its raw ancestry would publish a transient workflow.
+# This pins the exact official tag object, peeled commit, and original common ancestor, in that order.
+SNAPSHOT_BRIDGE = ("v0.1.135", "e8b32c8516f105f030528e029558d42916a4edfd",
+                   "3ad83ff72e6bc8df858a14db2806311229f42f03", "df9fba70ec4a75908010a9dac9f30a505cffa5dd")
+SNAPSHOT_TRAILER = "ETKN-Upstream-Snapshot"
+SNAPSHOT_PATTERN = rf"{SNAPSHOT_TRAILER}: (v{VERSION}) ([a-f0-9]{{40}}) ([a-f0-9]{{40}})"
 
 
 def require(condition, message):
@@ -128,29 +135,74 @@ class Git:
                 "Upstream release tag is not on upstream main.")
         return base, self.value("rev-parse", ref), upstream
 
-    def merge(self, base, upstream):
-        if self.ancestor(upstream, base):
-            return base
-        # Even a later revert could import workflow-changing commits into our repository.
-        require(not self.value("log", "--full-history", "--format=%H", f"{base}..{upstream}", "--", ".github/workflows"),
-                "Upstream history changes .github/workflows. Review and merge manually before retrying.")
-        # merge-tree computes the same three-way merge without checking out candidate files.
-        merged = self.run("merge-tree", "--write-tree", base, upstream, check=False)
-        if merged.returncode:
-            print(merged.stdout.rstrip())
-            raise SystemExit("Merge failed; resolve it on Fork main before retrying. No refs were pushed.")
+    def snapshot(self, source):
+        # Only the Fork's first-parent chain may establish the last imported upstream endpoint.
+        checkpoint = self.value("log", "--first-parent", "--format=%H", "-n", "1",
+                                f"--grep=^{SNAPSHOT_TRAILER}:", source)
+        if not checkpoint:
+            return None
+        parents = self.value("show", "-s", "--format=%P", checkpoint).split()
+        message = self.value("show", "-s", "--format=%B", checkpoint)
+        lines = [line for line in message.splitlines() if line.startswith(f"{SNAPSHOT_TRAILER}:")]
+        match = re.fullmatch(SNAPSHOT_PATTERN, lines[0]) if len(lines) == 1 else None
+        require(len(parents) == 1 and match and message.endswith("\n\n" + lines[0]),
+                "Invalid Fork upstream snapshot checkpoint. Inspect Fork main before retrying.")
+        return match.groups()
+
+    def contains_release(self, source, tag, upstream, tag_object):
+        checkpoint = self.snapshot(source)
+        if checkpoint and checkpoint[0] == tag:
+            return checkpoint == (tag, tag_object, upstream)
+        return self.ancestor(upstream, source)
+
+    def merge(self, base, upstream, tag=None, tag_object=None):
+        checkpoint = self.snapshot(base)
+        release = (tag, tag_object, upstream)
+        bridge = release == SNAPSHOT_BRIDGE[:3] and checkpoint is None
+        snapshot = bridge or checkpoint is not None
+        options, parents = [], ["-p", base]
+        message = f"Merge upstream release {upstream}"
+        if snapshot:
+            trailer = f"{SNAPSHOT_TRAILER}: {tag} {tag_object} {upstream}"
+            require(re.fullmatch(SNAPSHOT_PATTERN, trailer), "Snapshot sync requires an exact upstream tag and object.")
+            if checkpoint == release:
+                return base
+            if bridge:
+                merge_base = SNAPSHOT_BRIDGE[3]
+                require(self.value("merge-base", "--all", base, upstream) == merge_base,
+                        "Reviewed upstream snapshot no longer has the expected unique merge base.")
+            else:
+                old_tag, _, merge_base = checkpoint
+                require(tuple(map(int, tag[1:].split("."))) > tuple(map(int, old_tag[1:].split("."))) and
+                        merge_base != upstream and self.ancestor(merge_base, upstream),
+                        "Upstream snapshot does not advance from the recorded upstream release.")
+            require(self.run("diff", "--quiet", merge_base, upstream, "--", *AUTOMATION_PATHS, check=False).returncode == 0,
+                    "Upstream release changes protected automation. Review before retrying.")
+            options.append(f"--merge-base={merge_base}")
+            message = f"Sync upstream release {tag} as a source snapshot\n\n{trailer}"
+        else:
+            if self.ancestor(upstream, base):
+                return base
+            merge_base = base
+            parents += ["-p", upstream]
+        if not bridge:
+            require(not self.value("log", "--full-history", "--format=%H", f"{merge_base}..{upstream}", "--",
+                                   *AUTOMATION_PATHS),
+                    "Upstream history changes .github/workflows or scripts/fork-release. Review before retrying.")
+        # Compute a real three-way merge without checking out candidate files or importing excluded history.
+        merged = self.run("merge-tree", "--write-tree", *options, base, upstream, check=False)
+        require(merged.returncode == 0, "Merge failed; resolve it on Fork main before retrying. No refs were pushed.")
         tree = merged.stdout.splitlines()[0]
         identity = dict(GIT_AUTHOR_NAME="github-actions[bot]", GIT_COMMITTER_NAME="github-actions[bot]",
                         GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com",
                         GIT_COMMITTER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com")
         stamp = max(int(self.value("show", "-s", "--format=%ct", parent)) for parent in (base, upstream))
         identity.update(GIT_AUTHOR_DATE=f"@{stamp} +0000", GIT_COMMITTER_DATE=f"@{stamp} +0000")
-        return self.run("commit-tree", tree, "-p", base, "-p", upstream, "-m",
-                        f"Merge upstream release {upstream}", extra_env=identity).stdout.strip()
+        return self.run("commit-tree", tree, *parents, "-m", message, extra_env=identity).stdout.strip()
 
     def verify(self, base, source):
         # No workflow changes may cross the privileged publication boundary.
-        require(not self.value("diff", "--name-only", base, source, "--", ".github/workflows", "scripts/fork-release"),
+        require(not self.value("diff", "--name-only", base, source, "--", *AUTOMATION_PATHS),
                 "Candidate changes Fork automation. Review and merge those changes manually before retrying.")
         require(not self.value("diff", "--name-only", NATIVE_COMMIT, source, "--", *NATIVE_PATHS),
                 "Native inputs changed. Review and update the pinned matching source archive before publishing.")
@@ -164,7 +216,7 @@ class Git:
             return match.group(1)
         require(dependencies(DEPENDENCY_COMMIT) == dependencies(source),
                 "App dependency declarations changed; review corresponding source before publishing.")
-        for line in self.value("ls-tree", "-r", source, "--", ".github/workflows", "scripts/fork-release").splitlines():
+        for line in self.value("ls-tree", "-r", source, "--", *AUTOMATION_PATHS).splitlines():
             require(line.startswith(("100644 ", "100755 ")), "Automation must not contain symlinks or gitlinks.")
 
     def push(self, plan, token):
@@ -252,8 +304,8 @@ def plan_release(git, requested, approved_workflow, token, fork_revision=0):
         dest = f"refs/fork-release/{fork_tag}"
         git.run("fetch", "--no-tags", "origin", f"refs/tags/{fork_tag}:{dest}")
         require(git.value("rev-parse", dest) == git.value("rev-parse", dest + "^{commit}") == existing and
-                git.ancestor(existing, base) and git.ancestor(upstream, existing),
-                "Existing Fork tag is not a lightweight tag for a commit on main containing this upstream tag.")
+                git.ancestor(existing, base) and git.contains_release(existing, tag, upstream, tag_object),
+                "Existing Fork tag is not a lightweight tag for a commit on main containing this upstream release.")
     if already and already.get("draft") is not True:
         require(already.get("draft") is False and already.get("prerelease") is False and existing,
                 "Existing public release is not a valid Fork release.")
@@ -278,7 +330,7 @@ def plan_release(git, requested, approved_workflow, token, fork_revision=0):
         require(isinstance(previous_signer, str) and re.fullmatch(r"[a-f0-9]{64}", previous_signer),
                 "Latest Fork release has no valid signer fingerprint.")
     code = release_identity(tag, upstream_code, fork_revision, latest_tag, latest_manifest)
-    source = existing or git.merge(base, upstream)
+    source = existing or git.merge(base, upstream, tag, tag_object)
     git.verify(base, source)
     verify_upstream_gradle(git.value("show", f"{source}:app/build.gradle"), base_version, upstream_code)
     return dict(needed=True, upstream_tag=tag, upstream=upstream, tag_object=tag_object, base=base,

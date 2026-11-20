@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 import release
 
 
-class MergeTests(unittest.TestCase):
+class GitFixture(unittest.TestCase):
     def setUp(self):
         tmp = TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -33,6 +33,8 @@ class MergeTests(unittest.TestCase):
     def detach(self, ref):
         self.git.run("checkout", "--quiet", "--detach", ref)
 
+
+class MergeTests(GitFixture):
     def test_existing_upstream_ancestor_keeps_fork_head(self):
         fork = self.commit("fork.txt", "revised\n")
         self.assertEqual(self.git.merge(fork, self.common), fork)
@@ -105,6 +107,132 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(self.git.value("status", "--porcelain"), "")
 
 
+class SnapshotTests(GitFixture):
+    def bridge_fixture(self):
+        tag = "v0.1.135"
+        fork = self.commit("fork.txt", "revised\n")
+        self.detach(self.common)
+        added = self.commit(".github/workflows/transient-fixture.yml", "name: fixture only\n")
+        self.git.run("revert", "--no-edit", added)
+        deleted = self.git.value("rev-parse", "HEAD")
+        upstream = self.commit("shared.txt", "release 135\n")
+        tag_object = self.annotated_tag(tag, upstream)
+        return fork, added, deleted, tag, tag_object, upstream
+
+    def annotated_tag(self, tag, source):
+        self.git.run("tag", "-a", "-m", "fixture release", tag, source)
+        return self.git.value("rev-parse", f"refs/tags/{tag}")
+
+    def test_pinned_bridge_preserves_true_merge_tree_without_importing_raw_history(self):
+        fork, added, deleted, tag, tag_object, upstream = self.bridge_fixture()
+        expected_tree = self.git.value("merge-tree", "--write-tree", fork, upstream).splitlines()[0]
+        with patch.object(release, "SNAPSHOT_BRIDGE", (tag, tag_object, upstream, self.common)):
+            candidate = self.git.merge(fork, upstream, tag, tag_object)
+            self.assertEqual(self.git.merge(fork, upstream, tag, tag_object), candidate)
+            self.assertTrue(self.git.contains_release(candidate, tag, upstream, tag_object))
+        self.assertEqual(self.git.value("rev-parse", candidate + "^{tree}"), expected_tree)
+        self.assertEqual(self.git.value("show", "-s", "--format=%P", candidate), fork)
+        self.assertEqual(self.git.value("show", f"{candidate}:fork.txt"), "revised")
+        self.assertEqual(self.git.value("show", f"{candidate}:shared.txt"), "release 135")
+        self.assertIn(f"ETKN-Upstream-Snapshot: {tag} {tag_object} {upstream}",
+                      self.git.value("show", "-s", "--format=%B", candidate).splitlines())
+        self.assertEqual(self.git.value("ls-tree", "-r", candidate, "--", ".github/workflows"), "")
+        for raw in (added, deleted, upstream):
+            self.assertFalse(self.git.ancestor(raw, candidate))
+        removed_blob = self.git.value("rev-parse", f"{added}:.github/workflows/transient-fixture.yml")
+        reachable_objects = {line.split()[0] for line in self.git.value("rev-list", "--objects", candidate).splitlines()}
+        self.assertNotIn(removed_blob, reachable_objects)
+        self.assertEqual(self.git.value("rev-parse", "HEAD"), upstream)
+        self.assertEqual(self.git.value("status", "--porcelain"), "")
+
+    def test_bridge_exception_requires_exact_tag_object_peeled_commit_and_common_base(self):
+        fork, _, deleted, tag, tag_object, upstream = self.bridge_fixture()
+        other_tag = self.annotated_tag("v0.1.136", upstream)
+        other_endpoint = self.commit("upstream.txt", "new endpoint\n")
+        for requested_tag, requested_object, target, pinned_base in (
+            ("v0.1.136", tag_object, upstream, self.common),
+            (tag, other_tag, upstream, self.common),
+            (tag, tag_object, other_endpoint, self.common),
+            (tag, tag_object, upstream, deleted),
+        ):
+            with self.subTest(tag=requested_tag, tag_object=requested_object, target=target, base=pinned_base), \
+                    patch.object(release, "SNAPSHOT_BRIDGE", (tag, tag_object, upstream, pinned_base)), \
+                    self.assertRaises(SystemExit):
+                self.git.merge(fork, target, requested_tag, requested_object)
+
+    def test_pinned_bridge_rejects_net_changes_to_protected_paths(self):
+        fork, _, _, _, _, upstream = self.bridge_fixture()
+        cases = (("v0.1.136", ".github/workflows/new-fixture.yml"),
+                 ("v0.1.137", "scripts/fork-release/new-fixture.py"))
+        for tag, path in cases:
+            with self.subTest(path=path):
+                self.detach(upstream)
+                target = self.commit(path, "fixture only\n")
+                tag_object = self.annotated_tag(tag, target)
+                with patch.object(release, "SNAPSHOT_BRIDGE", (tag, tag_object, target, self.common)), \
+                        self.assertRaises(SystemExit):
+                    self.git.merge(fork, target, tag, tag_object)
+
+    def test_pinned_bridge_does_not_ignore_real_source_conflicts(self):
+        fork, _, _, tag, tag_object, upstream = self.bridge_fixture()
+        self.detach(fork)
+        conflicting_fork = self.commit("shared.txt", "a fork change to the same line\n")
+        with patch.object(release, "SNAPSHOT_BRIDGE", (tag, tag_object, upstream, self.common)), \
+                patch("builtins.print"), self.assertRaisesRegex(SystemExit, "Merge failed"):
+            self.git.merge(conflicting_fork, upstream, tag, tag_object)
+
+    def test_snapshot_base_allows_next_release_to_change_same_line_and_preserves_fork_revision(self):
+        fork, added, deleted, tag, tag_object, upstream = self.bridge_fixture()
+        with patch.object(release, "SNAPSHOT_BRIDGE", (tag, tag_object, upstream, self.common)):
+            source = self.git.merge(fork, upstream, tag, tag_object)
+            self.detach(source)
+            revised = self.commit("fork.txt", "later fork UI\n")
+            self.assertTrue(self.git.contains_release(revised, tag, upstream, tag_object))
+            self.assertEqual(self.git.merge(revised, upstream, tag, tag_object), revised)
+            self.assertFalse(self.git.contains_release(revised, tag, upstream, "0" * 40))
+            with self.assertRaises(SystemExit):
+                self.git.merge(revised, upstream, tag, "0" * 40)
+            self.detach(upstream)
+            next_tag = "v0.1.136"
+            next_upstream = self.commit("shared.txt", "release 136\n")
+            next_object = self.annotated_tag(next_tag, next_upstream)
+            # Graph ancestry still points behind the bridge; using it would conflict on shared.txt.
+            self.assertEqual(self.git.value("merge-base", revised, next_upstream), self.common)
+            candidate = self.git.merge(revised, next_upstream, next_tag, next_object)
+            self.assertEqual(self.git.merge(revised, next_upstream, next_tag, next_object), candidate)
+            self.assertTrue(self.git.contains_release(candidate, next_tag, next_upstream, next_object))
+        self.assertEqual(self.git.value("show", "-s", "--format=%P", candidate), revised)
+        self.assertEqual(self.git.value("show", f"{candidate}:fork.txt"), "later fork UI")
+        self.assertEqual(self.git.value("show", f"{candidate}:shared.txt"), "release 136")
+        for raw in (added, deleted, upstream, next_upstream):
+            self.assertFalse(self.git.ancestor(raw, candidate))
+
+    def test_later_reverted_protected_history_is_not_exempted(self):
+        fork, _, _, tag, tag_object, upstream = self.bridge_fixture()
+        with patch.object(release, "SNAPSHOT_BRIDGE", (tag, tag_object, upstream, self.common)):
+            source = self.git.merge(fork, upstream, tag, tag_object)
+            for path in (".github/workflows/future-fixture.yml", "scripts/fork-release/future-fixture.py"):
+                with self.subTest(path=path):
+                    self.detach(upstream)
+                    added = self.commit(path, "fixture only\n")
+                    self.git.run("revert", "--no-edit", added)
+                    later = self.git.value("rev-parse", "HEAD")
+                    self.assertEqual(self.git.value("diff", "--name-only", upstream, later, "--", path), "")
+                    with self.assertRaises(SystemExit):
+                        self.git.merge(source, later, "v0.1.136", later)
+
+    def test_rewritten_upstream_cannot_continue_snapshot_history(self):
+        fork, _, _, tag, tag_object, upstream = self.bridge_fixture()
+        with patch.object(release, "SNAPSHOT_BRIDGE", (tag, tag_object, upstream, self.common)):
+            source = self.git.merge(fork, upstream, tag, tag_object)
+            self.detach(self.common)
+            rewritten = self.commit("upstream.txt", "not a descendant of the published checkpoint\n")
+            revised_tag = "v0.1.136"
+            revised_object = self.annotated_tag(revised_tag, rewritten)
+            with self.assertRaises(SystemExit):
+                self.git.merge(source, rewritten, revised_tag, revised_object)
+
+
 class MetadataTests(unittest.TestCase):
     signer = "34" * 32
 
@@ -116,6 +244,7 @@ class MetadataTests(unittest.TestCase):
         git.prepare.return_value = (base, tag_object, upstream)
         git.remote_tag.return_value = source if published else None
         git.ancestor.return_value = True
+        git.contains_release.return_value = True
         git.merge.return_value = source
         upstream_version = upstream_tag[1:]
         gradle_code = upstream_code if git_code is None else git_code
@@ -159,6 +288,8 @@ class MetadataTests(unittest.TestCase):
             args = (git, "" if scheduled else upstream_tag, base, "job-token")
             kwargs = {} if fork_revision is None else {"fork_revision": fork_revision}
             plan = release.plan_release(*args, **kwargs)
+        if published:
+            git.contains_release.assert_called_once_with(source, upstream_tag, upstream, tag_object)
         return plan, api, read
 
     def test_planning_uses_job_token_for_api_not_public_assets(self):
