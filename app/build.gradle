@@ -8,8 +8,8 @@ android {
         applicationId 'xyz.etkn.tv.revised'
         minSdk 24
         targetSdk 35
-        versionCode 136
-        versionName '0.1.135'
+        versionCode 138
+        versionName '0.1.137'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         buildConfigField 'String', 'UPDATE_REPOSITORY', '"Alumos/etkn-tv"'
         buildConfigField 'String', 'UPDATE_MIRROR_BASE', '"https://gh-proxy.com/"'
